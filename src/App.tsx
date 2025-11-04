@@ -1,5 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI } from '@google/genai';
+// IMPORTANTE: Esta importación puede ser la raíz de otros problemas.
+// La documentación oficial usa: import { GoogleGenerativeAI } from "@google/generative-ai";
+// Pero por ahora, solo arreglaremos los errores de despliegue.
+// === ¡ARREGLO DE ERROR DE PAQUETE! ===
+// Se cambió "@google/genai" por "@google/generative-ai" y se usó un alias.
+import { GoogleGenerativeAI as GoogleGenAI } from "@google/generative-ai";
+
 
 // Helper function to convert a file to a base64 string
 const fileToBase64 = (file: File | Blob): Promise<string> => {
@@ -78,8 +84,9 @@ const App: React.FC = () => {
         setBusinessSummary('');
 
         try {
-            // Fix: API key must be retrieved from process.env.API_KEY as per coding guidelines.
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // === ARREGLO 1 DE 8 (API KEY) ===
+            // Cambiado de process.env.API_KEY a import.meta.env.VITE_GEMINI_API_KEY
+            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
             const base64Audio = await fileToBase64(file);
             const audioPart = {
                 inlineData: {
@@ -93,11 +100,15 @@ const App: React.FC = () => {
                 contents: [{ parts: [audioPart, {text: "Transcribe this audio recording."}] }],
             });
             
+            // === ARREGLO 2 DE 8 (undefined) ===
+            // Añadido ?? "" para manejar respuestas vacías
             setTranscription(response.text ?? "");
             setStatus('Transcripción completa. Ahora puedes generar un resumen general.');
         } catch (error) {
             console.error('Transcription error:', error);
-            setStatus(`Error en la transcripción: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            // Mostramos el error real en el status para más claridad
+            setStatus(`Error en la transcripción: ${errorMessage}`);
         } finally {
             setIsLoading(false);
         }
@@ -114,8 +125,8 @@ const App: React.FC = () => {
         setGeneralSummary('');
 
         try {
-            // Fix: API key must be retrieved from process.env.API_KEY as per coding guidelines.
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // === ARREGLO 3 DE 8 (API KEY) ===
+            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
             const prompt = `Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso. El resumen debe identificar los puntos clave, las acciones a seguir y el sentimiento general de la llamada, sin asumir ningún contexto de negocio específico.
             
             Transcripción:
@@ -129,6 +140,7 @@ const App: React.FC = () => {
                 contents: prompt,
             });
 
+            // === ARREGLO 4 DE 8 (undefined) ===
             setGeneralSummary(response.text ?? "");
             setStatus('Resumen general generado. Ahora puedes generar el resumen de negocio.');
         } catch (error) {
@@ -150,8 +162,8 @@ const App: React.FC = () => {
         setBusinessSummary('');
 
         try {
-            // Fix: API key must be retrieved from process.env.API_KEY as per coding guidelines.
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // === ARREGLO 5 DE 8 (API KEY) ===
+            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
             const permanentInstructionsText = globalInstructions.length > 0
                 ? `Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
                 : '';
@@ -171,6 +183,7 @@ const App: React.FC = () => {
                 contents: prompt,
             });
 
+            // === ARREGLO 6 DE 8 (undefined) ===
             setBusinessSummary(response.text ?? "");
             setStatus('Resumen de negocio generado. Puedes mejorarlo a continuación.');
         } catch (error) {
@@ -195,8 +208,8 @@ const App: React.FC = () => {
         setStatus('Aplicando mejoras al resumen de negocio...');
 
         try {
-            // Fix: API key must be retrieved from process.env.API_KEY as per coding guidelines.
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // === ARREGLO 7 DE 8 (API KEY) ===
+            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
             const instruction = improvementInstruction || 'la instrucción fue grabada por audio.';
             const permanentInstructionsText = globalInstructions.length > 0
                 ? `Adicionalmente, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
@@ -237,6 +250,7 @@ const App: React.FC = () => {
                 contents: [{ parts: promptParts }],
             });
             
+            // === ARREGLO 8 DE 8 (undefined) ===
             setBusinessSummary(response.text ?? "");
             setStatus('Resumen de negocio mejorado exitosamente.');
 
@@ -329,7 +343,8 @@ ${businessSummary}
 
     const handleExportInstructions = () => {
         if (globalInstructions.length === 0) {
-            alert("No hay mejoras permanentes para exportar.");
+            // Reemplazamos alert() por setStatus
+            setStatus("No hay mejoras permanentes para exportar.");
             return;
         }
         const content = globalInstructions.join('\n');
@@ -353,7 +368,8 @@ ${businessSummary}
             const text = e.target?.result as string;
             const lines = text.split('\n').filter(line => line.trim() !== '');
             saveGlobalInstructions(lines);
-            alert(`${lines.length} mejoras importadas correctamente.`);
+            // Reemplazamos alert() por setStatus
+            setStatus(`${lines.length} mejoras importadas correctamente.`);
         };
         reader.readAsText(file);
         event.target.value = ''; // Reset input
@@ -374,7 +390,7 @@ ${businessSummary}
         modalButton: { padding: '10px', marginLeft: '10px' },
         instructionItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', color: '#1c1e21' },
         deleteButton: { backgroundColor: '#fa3e3e', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' },
-        filenameDisplay: { fontWeight: 'bold', marginBottom: '1rem', color: '#606770', padding: '8px 12px', backgroundColor: '#f0f2f5', borderRadius: '6px', border: '1px solid #dddfe2' }
+        filenameDisplay: { fontWeight: 'bold', marginBottom: '1am', color: '#606770', padding: '8px 12px', backgroundColor: '#f0f2f5', borderRadius: '6px', border: '1px solid #dddfe2' }
     };
 
     return (
@@ -435,7 +451,7 @@ ${businessSummary}
                                 style={{...styles.textarea, minHeight: '80px'}}
                                 placeholder="Ej: 'El cliente se llama Juan Pérez, no Juan Ramírez' o 'Enfócate más en el precio del pulpo'"
                                 value={improvementInstruction}
-                                onChange={(e) => setImprovementInstruction(e.target.value)}
+                                onChange={(e) => setImprovementInstruction(e.g.target.value)}
                             />
                             <button onClick={toggleRecording} style={{...styles.button, backgroundColor: isRecording ? '#fa3e3e' : '#42b72a'}}>
                                 {isRecording ? 'Detener Grabación' : 'Grabar Instrucciones'}
@@ -444,7 +460,7 @@ ${businessSummary}
                                 <button onClick={() => handleImproveSummary(false)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {})}}>
                                     Aplicar Mejora Temporal
                                 </button>
-                                <button onClick={() => handleImproveSummary(true)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {}), marginLeft: '1rem', backgroundColor: '#36a420'}}>
+                                <button onClick={() => handleImproveSummary(true)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {}), marginLeft: '1am', backgroundColor: '#36a420'}}>
                                     Aplicar y Guardar Mejora
                                 </button>
                             </div>
@@ -537,3 +553,4 @@ ${businessSummary}
 };
 
 export default App;
+
