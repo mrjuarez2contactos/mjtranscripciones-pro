@@ -93,7 +93,7 @@ const App: React.FC = () => {
                 contents: [{ parts: [audioPart, {text: "Transcribe this audio recording."}] }],
             });
             
-            setTranscription(response.text);
+            setTranscription(response.text ?? "");
             setStatus('Transcripción completa. Ahora puedes generar un resumen general.');
         } catch (error) {
             console.error('Transcription error:', error);
@@ -129,7 +129,7 @@ const App: React.FC = () => {
                 contents: prompt,
             });
 
-            setGeneralSummary(response.text);
+            setGeneralSummary(response.text ?? "");
             setStatus('Resumen general generado. Ahora puedes generar el resumen de negocio.');
         } catch (error) {
             console.error('General summary generation error:', error);
@@ -171,7 +171,7 @@ const App: React.FC = () => {
                 contents: prompt,
             });
 
-            setBusinessSummary(response.text);
+            setBusinessSummary(response.text ?? "");
             setStatus('Resumen de negocio generado. Puedes mejorarlo a continuación.');
         } catch (error) {
             console.error('Business summary generation error:', error);
@@ -237,7 +237,7 @@ const App: React.FC = () => {
                 contents: [{ parts: promptParts }],
             });
             
-            setBusinessSummary(response.text);
+            setBusinessSummary(response.text ?? "");
             setStatus('Resumen de negocio mejorado exitosamente.');
 
             if (isPermanent && improvementInstruction) {
