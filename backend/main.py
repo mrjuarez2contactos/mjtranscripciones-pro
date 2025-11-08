@@ -14,10 +14,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 app = FastAPI()
 
 # --- Configuración de Seguridad (CORS) ---
-origins = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-]
+origins = ["*"] # Esto significa "permitir todas las conexiones"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
