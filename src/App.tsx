@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import JSZip from 'jszip'; // <-- ¡NUEVA IMPORTACIÓN!
+import JSZip from 'jszip'; 
 
 // --- DEFINICIÓN DE ESTADO (COLA) ---
 type FileStatus = 'pending' | 'processing' | 'completed' | 'error';
@@ -19,7 +19,7 @@ const App: React.FC = () => {
     
     const [fileQueue, setFileQueue] = useState<FileQueueItem[]>([]);
     const [status, setStatus] = useState<string>('Por favor, selecciona uno o más archivos de audio.');
-    const [isLoading, setIsLoading] = useState<boolean>(false); // Para el "Procesar Todo"
+    const [isLoading, setIsLoading] = useState<boolean>(false); 
 
     // State for permanent instructions
     const [globalInstructions, setGlobalInstructions] = useState<string[]>([]);
@@ -78,8 +78,12 @@ const App: React.FC = () => {
     const processSingleFile = async (itemId: string) => {
         const item = fileQueue.find(i => i.id === itemId);
 
-        if (!item || item.status !== 'pending') {
-            return;
+        // --- ================================== ---
+        // ---       ¡ESTA ES LA CORRECCIÓN!      ---
+        // --- ================================== ---
+        // Ahora permitimos procesar si está 'pending' O 'error'
+        if (!item || (item.status !== 'pending' && item.status !== 'error')) {
+            return; // No hacer nada si ya está completado o en proceso
         }
 
         setStatus(`Procesando: ${item.file.name}...`);
@@ -104,11 +108,13 @@ const App: React.FC = () => {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Error desconocido";
             console.error(`Error procesando ${item.file.name}:`, error);
+            // Guardamos el error técnico para nuestra lógica interna
             updateFileInQueue(itemId, { 
                 status: 'error', 
                 errorMessage: errorMessage 
             });
-            setStatus(`Error en ${item.file.name}: ${errorMessage}`);
+            // Mostramos un estado simple
+            setStatus(`Error en ${item.file.name}, revisa la cola.`);
         }
     };
 
@@ -125,6 +131,7 @@ const App: React.FC = () => {
 
         for (const item of pendingFiles) {
             await processSingleFile(item.id);
+            // Mantenemos el retardo de 3s que funcionó para la mayoría
             await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
@@ -134,9 +141,6 @@ const App: React.FC = () => {
     
     // --- LÓGICA DE DESCARGA ---
 
-    /**
-     * Genera el contenido de texto para un solo archivo.
-     */
     const generateDocumentContent = (item: FileQueueItem): string => {
         return `
 =========================================
@@ -166,9 +170,6 @@ ${item.businessSummary}
         `.trim(); 
     };
 
-    /**
-     * Descarga un solo archivo .txt
-     */
     const handleGenerateDocument = (item: FileQueueItem) => {
         if (!item || item.status !== 'completed') {
             setStatus("Este archivo no está completado.");
@@ -189,7 +190,6 @@ ${item.businessSummary}
         setStatus("Documento generado y descargado.");
     };
 
-    // --- LÓGICA DE DESCARGA ZIP ---
     const handleDownloadZip = async () => {
         const completedFiles = fileQueue.filter(item => item.status === 'completed');
         if (completedFiles.length === 0) {
@@ -296,7 +296,7 @@ ${item.businessSummary}
         statusProcessing: { color: '#1877f2', backgroundColor: '#e7f3ff' },
         statusCompleted: { color: '#36a420', backgroundColor: '#e6f7e2' },
         statusError: { color: '#fa3e3e', backgroundColor: '#fde7e7' },
-        errorText: { fontSize: '12px', color: '#fa3e3e', marginTop: '4px' },
+        errorText: { fontSize: '12px', color: '#fa3e3e', marginTop: '4px', paddingLeft: '0.75rem', paddingRight: '0.75rem', paddingBottom: '0.75rem' },
     };
 
     // Helper para obtener el estilo del estado
@@ -337,13 +337,16 @@ ${item.businessSummary}
                     <div style={styles.card}>
                         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
                             <h2>2. Cola de Procesamiento ({fileQueue.length} archivos)</h2>
-                            <button 
-                                onClick={handleProcessAll} 
-                                disabled={isLoading}
-                                style={{...styles.button, ...styles.buttonGreen, ...(isLoading ? styles.buttonDisabled : {})}}
-                            >
-                                {isLoading ? 'Procesando...' : `Procesar Todos (${fileQueue.filter(f => f.status === 'pending').length})`}
-                            </button>
+                            <div> 
+                                <button 
+                                    onClick={handleProcessAll} 
+                                    disabled={isLoading}
+                                    style={{...styles.button, ...styles.buttonGreen, ...(isLoading ? styles.buttonDisabled : {})}}
+                                >
+                                    {isLoading ? 'Procesando...' : `Procesar Todos (${fileQueue.filter(f => f.status === 'pending').length})`}
+                                </button>
+                                {/* Botón de Reintentar Errores Eliminado */}
+                            </div>
                         </div>
                         <div style={styles.queueContainer}>
                             {fileQueue.map((item) => (
@@ -356,6 +359,7 @@ ${item.businessSummary}
                                         <div>
                                             <button 
                                                 onClick={() => processSingleFile(item.id)}
+                                                // Habilitado si está 'pending' O 'error'
                                                 disabled={isLoading || item.status === 'processing' || item.status === 'completed'}
                                                 style={{...styles.button, ...styles.buttonSmall, ...((isLoading || item.status === 'processing' || item.status === 'completed') ? styles.buttonDisabled : {})}}
                                             >
@@ -377,9 +381,23 @@ ${item.businessSummary}
                                             </button>
                                         </div>
                                     </div>
+                                    
+                                    {/* --- ================================== --- */}
+                                    {/* ---   MENSAJES DE ERROR MÁS LIMPIOS    --- */}
+                                    {/* --- ================================== --- */}
                                     {item.status === 'error' && item.errorMessage && (
                                         <div style={{...styles.queueItem, borderTop: '1px dashed #fde7e7'}}>
-                                            <span style={styles.errorText}><strong>Error:</strong> {item.errorMessage}</span>
+                                            {(item.errorMessage.includes('PROHIBITED_CONTENT') || item.errorMessage.includes('blocked')) ? (
+                                                // Mensaje para Error Permanente (Bloqueo)
+                                                <span style={styles.errorText}>
+                                                    <strong>Contenido Prohibido:</strong> Google ha bloqueado este audio. Elimine este archivo o transcriba manualmente.
+                                                </span>
+                                            ) : (
+                                                // Mensaje para Error Temporal (429, Failed to Fetch, o cualquier otro)
+                                                <span style={styles.errorText}>
+                                                    <strong>Servidor Ocupado:</strong> Intente de nuevo en 1 minuto con el botón "Procesar".
+                                                </span>
+                                            )}
                                         </div>
                                     )}
                                 </div>
