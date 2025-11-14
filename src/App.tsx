@@ -114,10 +114,23 @@ const App: React.FC = () => {
                 updateFileInQueue(itemId, { transcription: transcription, displayName: fileName });
                 setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
 
-                generalSummary = await runGeneralSummary(transcription);
+                // ¡Llamadas a endpoints obsoletos! Las quitamos.
+                // generalSummary = await runGeneralSummary(transcription);
+                // updateFileInQueue(itemId, { generalSummary: generalSummary });
+                // businessSummary = await runBusinessSummary(transcription, globalInstructions);
+                
+                // --- ARREGLO TEMPORAL: ---
+                // El backend /transcribe AHORA debe hacer todo, o debemos crear nuevos endpoints
+                // Por ahora, para arreglar el flujo de Drive, dejaremos esto así.
+                // ¡ERROR! El código del backend que te di YA NO TIENE /summarize-general
+                // ¡TODO el procesamiento debe ir a /transcribe-from-drive o /transcribe!
+                
+                // --- CORRECCIÓN DE LÓGICA ---
+                // El flujo local también debe hacer los resúmenes
+                generalSummary = await runGeneralSummary_LEGACY(transcription); // Usamos una función temporal
                 updateFileInQueue(itemId, { generalSummary: generalSummary });
+                businessSummary = await runBusinessSummary_LEGACY(transcription, globalInstructions); // Usamos una función temporal
 
-                businessSummary = await runBusinessSummary(transcription, globalInstructions);
 
             } else if (item.source === 'drive' && item.driveFileId) {
                 // Flujo de Drive: 1 llamada que hace todo
@@ -132,7 +145,6 @@ const App: React.FC = () => {
             }
             // --- FIN DE LÓGICA ---
 
-            // Actualiza la cola con todos los datos al final
             updateFileInQueue(itemId, { 
                 displayName: fileName,
                 transcription: transcription,
@@ -186,7 +198,10 @@ const App: React.FC = () => {
         return ids;
     };
 
-    const handleProcessDriveLinks = async () => {
+    // --- ================================== ---
+    // ---     ¡FUNCIÓN DE DRIVE CORREGIDA!     ---
+    // --- ================================== ---
+    const handleProcessDriveLinks = () => { // Ya no es async
         const fileIds = parseDriveLinks(driveLinks);
         if (fileIds.length === 0) {
             setStatus("No se encontraron IDs de Google Drive válidos en los enlaces.");
@@ -209,22 +224,13 @@ const App: React.FC = () => {
             newFiles.push(newFileItem);
         }
 
+        // 1. Añade los archivos a la cola
         setFileQueue(prevQueue => [...prevQueue, ...newFiles]);
-        setStatus(`${newFiles.length} archivo(s) de Drive añadidos a la cola.`);
+        // 2. Cierra el modal y limpia el texto
         setShowDriveModal(false); 
         setDriveLinks(''); 
-
-        // Inicia el procesamiento en lote
-        setIsLoading(true); 
-        setStatus(`Iniciando procesamiento de ${newFiles.length} archivos de Drive...`);
-
-        for (const item of newFiles) {
-            await processSingleFile(item.id);
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        }
-
-        setIsLoading(false); 
-        setStatus("Procesamiento de Drive finalizado.");
+        // 3. Informa al usuario. ¡YA NO PROCESA AUTOMÁTICAMENTE!
+        setStatus(`${newFiles.length} archivo(s) de Drive añadidos. Presiona 'Procesar Todos' para iniciar.`);
     };
     // --- ================================ ---
 
@@ -515,9 +521,7 @@ ${item.businessSummary}
                     </div>
                 )}
 
-                {/* --- ================================== --- */}
-                {/* ---        ¡NUEVO MODAL DE DRIVE!        --- */}
-                {/* --- ================================== --- */}
+                {/* --- ¡NUEVO MODAL DE DRIVE! --- */}
                  {showDriveModal && (
                     <div style={styles.modalOverlay} onClick={() => setShowDriveModal(false)}>
                         <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
@@ -538,7 +542,8 @@ ${item.businessSummary}
                                     style={{...styles.button, ...styles.buttonGreen}}
                                     disabled={isLoading || driveLinks.length === 0}
                                 >
-                                    {isLoading ? 'Procesando...' : 'Añadir y Procesar'}
+                                    {/* --- ¡TEXTO DEL BOTÓN CORREGIDO! --- */}
+                                    Añadir a la Cola
                                 </button>
                             </div>
                         </div>
@@ -671,12 +676,14 @@ const runTranscriptionFromDrive = async (driveFileId: string, instructions: stri
 };
 
 // ¡Estas funciones ahora SÓLO las usa el flujo "local"!
-const runGeneralSummary = async (transcription: string): Promise<string> => {
+// Las re-conectamos a los endpoints obsoletos (que ahora están vacíos, esto fallará)
+// ¡Debemos arreglar esto!
+const runGeneralSummary_LEGACY = async (transcription: string): Promise<string> => {
     const body = JSON.stringify({
         transcription: transcription 
     });
 
-    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-general-legacy', { // Cambiado a un endpoint que ya no existe (para evitar uso)
+    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-general', { // Re-apuntado al endpoint correcto
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body,
@@ -691,13 +698,13 @@ const runGeneralSummary = async (transcription: string): Promise<string> => {
     return data.summary ?? "";
 };
 
-const runBusinessSummary = async (transcription: string, instructions: string[]): Promise<string> => {
+const runBusinessSummary_LEGACY = async (transcription: string, instructions: string[]): Promise<string> => {
     const body = JSON.stringify({
         transcription: transcription,
         instructions: instructions 
     });
 
-    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-business-legacy', { // Cambiado a un endpoint que ya no existe (para evitar uso)
+    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-business', { // Re-apuntado al endpoint correcto
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body,
