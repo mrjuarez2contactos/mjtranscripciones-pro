@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 # --- Importaciones de Google Drive ---
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaInMemoryUpload
+from datetime import datetime # Para generar la fecha en el TXT
 # --- Fin de Importaciones ---
 
 
@@ -23,27 +24,28 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # --- Configuración de Google Drive ---
 SERVICE_ACCOUNT_JSON_STRING = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+FOLDER_ID_M4A_DESTINATION = os.getenv("FOLDER_ID_M4A_DESTINATION")
+FOLDER_ID_TXT_DESTINATION = os.getenv("FOLDER_ID_TXT_DESTINATION")
 
-# --- ================================== ---
-# ---       ¡CAMBIO DE PERMISO AQUÍ!       ---
-# --- ================================== ---
-# Cambiamos 'drive.readonly' a 'drive' para tener permisos de escritura (renombrar)
+# Cambiamos 'drive.readonly' a 'drive' para tener permisos de escritura (renombrar, mover, crear)
 SCOPES = ['https://www.googleapis.com/auth/drive'] 
 
 creds = None
 drive_service = None
 
-if SERVICE_ACCOUNT_JSON_STRING:
+# Verifica que todas las variables de entorno necesarias estén cargadas
+if not all([SERVICE_ACCOUNT_JSON_STRING, FOLDER_ID_M4A_DESTINATION, FOLDER_ID_TXT_DESTINATION, os.getenv("GEMINI_API_KEY")]):
+    print("ADVERTENCIA: Faltan una o más variables de entorno (JSON, M4A_DEST, TXT_DEST o GEMINI_API_KEY).")
+else:
     try:
         SERVICE_ACCOUNT_INFO = json.loads(SERVICE_ACCOUNT_JSON_STRING)
         creds = service_account.Credentials.from_service_account_info(
             SERVICE_ACCOUNT_INFO, scopes=SCOPES
         )
         drive_service = build('drive', 'v3', credentials=creds)
+        print("Servicio de Google Drive y credenciales cargados exitosamente.")
     except Exception as e:
         print(f"Error al cargar credenciales de Google Drive: {e}")
-else:
-    print("ADVERTENCIA: GOOGLE_SERVICE_ACCOUNT_JSON no está configurado.")
 
 app = FastAPI()
 
@@ -62,9 +64,9 @@ app.add_middleware(
 
 # --- Lista de Seguridad Corregida ---
 safety_settings = [
-    {"category": genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE},
-    {"category": genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE},
-    {"category": genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE},
+    {"category": genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE"},
+    {"category": genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE"},
+    {"category": genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE"},
     {"category": genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE},
 ]
 
@@ -78,6 +80,38 @@ class BusinessSummaryRequest(BaseModel):
 
 class DriveRequest(BaseModel):
     drive_file_id: str
+    instructions: list[str] = Field(default_factory=list) # ¡Añadido para pasar instrucciones!
+
+# --- Función Helper para el contenido del TXT ---
+def generate_document_content(file_name: str, transcription: str, general_summary: str, business_summary: str) -> str:
+    # Genera la fecha actual en un formato legible
+    fecha_procesamiento = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return f"""
+=========================================
+REGISTRO DE LLAMADA
+=========================================
+
+Archivo Original: {file_name}
+Fecha de Procesamiento: {fecha_procesamiento}
+
+-----------------------------------------
+1. TRANSCRIPCIÓN COMPLETA
+-----------------------------------------
+
+{transcription}
+
+-----------------------------------------
+2. RESUMEN GENERAL DE LA LLAMADA
+-----------------------------------------
+
+{general_summary}
+
+-----------------------------------------
+3. RESUMEN DE NEGOCIO (PARA NOTAS RÁPIDAS)
+-----------------------------------------
+
+{business_summary}
+    """.strip()
 
 # --- Endpoints (Las "URLs" de nuestra API) ---
 
@@ -87,7 +121,6 @@ def read_root():
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
-    # (Esta función no cambia)
     if not file:
         raise HTTPException(status_code=400, detail="No se subió ningún archivo.")
     try:
@@ -97,7 +130,8 @@ async def transcribe_audio(file: UploadFile = File(...)):
         }
         model = genai.GenerativeModel(model_name="gemini-2.5-flash", safety_settings=safety_settings)
         response = await model.generate_content_async(["Transcribe this audio recording.", audio_part])
-        return {"transcription": response.text}
+        # Devolvemos también el nombre del archivo
+        return {"transcription": response.text, "fileName": file.filename}
     except Exception as e:
         print(f"Error en /transcribe: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
@@ -106,110 +140,124 @@ async def transcribe_audio(file: UploadFile = File(...)):
             await file.close()
 
 # --- ================================== ---
-# ---    ENDPOINT ACTUALIZADO CON RENOMBRADO   ---
+# ---    ENDPOINT PRINCIPAL (ACTUALIZADO)   ---
 # --- ================================== ---
 @app.post("/transcribe-from-drive")
 async def transcribe_from_drive(request: DriveRequest):
     if not drive_service:
-        raise HTTPException(status_code=500, detail="Servicio de Google Drive no configurado en el backend.")
-    if not request.drive_file_id:
-        raise HTTPException(status_code=400, detail="No se proporcionó ID de Google Drive.")
+        raise HTTPException(status_code=500, detail="Servicio de Google Drive no configurado. Revisa las variables de entorno.")
+    if not all([FOLDER_ID_M4A_DESTINATION, FOLDER_ID_TXT_DESTINATION]):
+        raise HTTPException(status_code=500, detail="IDs de carpetas de destino no configurados en el backend.")
 
     try:
         file_id = request.drive_file_id
         
-        # 1. Obtener metadatos (nombre y tipo)
-        file_metadata = drive_service.files().get(fileId=file_id, fields='mimeType, name').execute()
+        # 1. Obtener metadatos (nombre, tipo, y carpeta padre)
+        file_metadata = drive_service.files().get(fileId=file_id, fields='mimeType, name, parents').execute()
         mime_type = file_metadata.get('mimeType')
         original_name = file_metadata.get('name')
+        original_parent = file_metadata.get('parents')[0] # Obtenemos la carpeta "Recientes"
         
-        # 2. ¡NUEVA LÓGICA DE RENOMBRADO!
+        # 2. Renombrar
         new_name = original_name
         if original_name.startswith("Grabacion de llamada "):
-            new_name = original_name.replace("Grabacion de llamada ", "", 1) # Quita solo la primera instancia
+            new_name = original_name.replace("Grabacion de llamada ", "", 1)
             print(f"Renombrando: '{original_name}' -> '{new_name}'")
-            try:
-                # Ejecutar el cambio de nombre en Google Drive
-                drive_service.files().update(
-                    fileId=file_id,
-                    body={'name': new_name}
-                ).execute()
-            except Exception as e:
-                print(f"Error al renombrar, continuando con el nombre original. Error: {e}")
-                new_name = original_name # Si falla, revierte al nombre original
         
-        print(f"Procesando archivo desde Drive: {new_name} ({mime_type})")
-
-        # 3. Descargar el archivo de Google Drive en memoria
+        # 3. Descargar el archivo
+        print(f"Descargando: {new_name} ({mime_type})")
         drive_request = drive_service.files().get_media(fileId=file_id)
         file_bytes_io = io.BytesIO()
         downloader = MediaIoBaseDownload(file_bytes_io, drive_request)
-        
         done = False
         while done is False:
             status, done = downloader.next_chunk()
 
-        # 4. Preparar el archivo para Gemini
-        audio_part = {
-            "mime_type": mime_type,
-            "data": file_bytes_io.getvalue()
-        }
-        
-        # 5. Llamar a Gemini
-        model = genai.GenerativeModel(model_name="gemini-2.5-flash", safety_settings=safety_settings)
-        response = await model.generate_content_async(["Transcribe this audio recording.", audio_part])
+        # 4. Transcribir (Gemini Flash)
+        print("Transcribiendo...")
+        audio_part = { "mime_type": mime_type, "data": file_bytes_io.getvalue() }
+        model_flash = genai.GenerativeModel(model_name="gemini-2.5-flash", safety_settings=safety_settings)
+        response_flash = await model_flash.generate_content_async(["Transcribe this audio recording.", audio_part])
+        transcription = response_flash.text
 
-        # 6. Devolver la transcripción y el NOMBRE LIMPIO
-        return {"transcription": response.text, "fileName": new_name}
+        # 5. Resumen General (Gemini Pro)
+        print("Generando Resumen General...")
+        prompt_general = f"""Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso...
+        Transcripción:
+        ---
+        {transcription}
+        ---
+        """
+        model_pro = genai.GenerativeModel(model_name="gemini-2.5-pro", safety_settings=safety_settings)
+        response_general = await model_pro.generate_content_async(prompt_general)
+        general_summary = response_general.text
+
+        # 6. Resumen de Negocio (Gemini Pro)
+        print("Generando Resumen de Negocio...")
+        # ¡Ahora sí usamos las instrucciones permanentes!
+        permanent_instructions_text = ""
+        if request.instructions:
+            instructions_joined = ". ".join(request.instructions)
+            permanent_instructions_text = f"Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: {instructions_joined}"
+        
+        prompt_business = f"""Basado en la siguiente transcripción de una llamada, genera un resumen de negocio claro y conciso...
+        {permanent_instructions_text}
+        Transcripción:
+        ---
+        {transcription}
+        ---
+        """
+        response_business = await model_pro.generate_content_async(prompt_business)
+        business_summary = response_business.text
+
+        # 7. Crear el archivo .txt
+        print(f"Creando archivo .txt en carpeta {FOLDER_ID_TXT_DESTINATION}...")
+        txt_content = generate_document_content(new_name, transcription, general_summary, business_summary)
+        txt_filename = f"{new_name.split('.')[0]}.txt"
+        
+        txt_media = MediaInMemoryUpload(txt_content.encode('utf-8'), mimetype='text/plain')
+        drive_service.files().create(
+            body={'name': txt_filename, 'parents': [FOLDER_ID_TXT_DESTINATION]},
+            media_body=txt_media
+        ).execute()
+
+        # 8. Mover el .m4a
+        print(f"Moviendo .m4a a carpeta {FOLDER_ID_M4A_DESTINATION}...")
+        drive_service.files().update(
+            fileId=file_id,
+            addParents=FOLDER_ID_M4A_DESTINATION,
+            removeParents=original_parent,
+            body={'name': new_name} # Se asegura de que tenga el nombre correcto
+        ).execute()
+
+        print(f"Proceso completado para: {new_name}")
+        # Devolvemos los 4 datos al frontend
+        return {
+            "fileName": new_name,
+            "transcription": transcription,
+            "generalSummary": general_summary,
+            "businessSummary": business_summary
+        }
 
     except Exception as e:
         print(f"Error en /transcribe-from-drive: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- ================================== ---
+# --- (Las otras funciones de resumen ya no las usaremos desde el frontend, ---
+# --- pero las dejamos por si las necesitamos en el futuro) ---
 
 @app.post("/summarize-general")
 async def summarize_general(request: GeneralSummaryRequest):
-    # (El resto del archivo no cambia...)
-    if not request.transcription:
-        raise HTTPException(status_code=400, detail="No se proporcionó transcripción.")
-    try:
-        prompt = f"""Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso. El resumen debe identificar los puntos clave, las acciones a seguir y el sentimiento general de la llamada, sin asumir ningún contexto de negocio específico.
-        Transcripción:
-        ---
-        {request.transcription}
-        ---
-        """
-        model = genai.GenerativeModel(model_name="gemini-2.5-pro", safety_settings=safety_settings)
-        response = await model.generate_content_async(prompt)
-        return {"summary": response.text}
-    except Exception as e:
-        print(f"Error en /summarize-general: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Esta función ahora está obsoleta, la lógica se movió a /transcribe-from-drive
+    print("ADVERTENCIA: Se llamó al endpoint obsoleto /summarize-general")
+    raise HTTPException(status_code=404, detail="Endpoint obsoleto. Usar /transcribe-from-drive.")
+
 
 @app.post("/summarize-business")
 async def summarize_business(request: BusinessSummaryRequest):
-    if not request.transcription:
-        raise HTTPException(status_code=400, detail="No se proporcionó transcripción.")
-    try:
-        permanent_instructions_text = ""
-        if request.instructions:
-            instructions_joined = ". ".join(request.instructions)
-            permanent_instructions_text = f"Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: {instructions_joined}"
-
-        prompt = f"""Basado en la siguiente transcripción de una llamada, genera un resumen de negocio claro y conciso. El resumen debe identificar los puntos clave y las acciones a seguir, enfocándose en temas relevantes para un negocio de mariscos.
-        {permanent_instructions_text}
-        Transcripción:
-        ---
-        {request.transcription}
-        ---
-        """
-        model = genai.GenerativeModel(model_name="gemini-2.5-pro", safety_settings=safety_settings)
-        response = await model.generate_content_async(prompt)
-        return {"summary": response.text}
-    except Exception as e:
-        print(f"Error en /summarize-business: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Esta función ahora está obsoleta, la lógica se movió a /transcribe-from-drive
+    print("ADVERTENCIA: Se llamó al endpoint obsoleto /summarize-business")
+    raise HTTPException(status_code=404, detail="Endpoint obsoleto. Usar /transcribe-from-drive.")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

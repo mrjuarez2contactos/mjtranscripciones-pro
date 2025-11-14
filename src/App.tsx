@@ -3,14 +3,14 @@ import JSZip from 'jszip';
 
 // --- DEFINICIÓN DE ESTADO (COLA) ---
 type FileStatus = 'pending' | 'processing' | 'completed' | 'error';
-type FileSource = 'local' | 'drive'; // <-- Para saber de dónde vino
+type FileSource = 'local' | 'drive'; 
 
 interface FileQueueItem {
   id: string; 
-  file: File | null; // <-- Ahora puede ser nulo (si es de Drive)
-  driveFileId: string | null; // <-- Nuevo campo para el ID de Drive
+  file: File | null; 
+  driveFileId: string | null; 
   source: FileSource;
-  displayName: string; // <-- Nuevo campo para mostrar el nombre
+  displayName: string; 
   
   status: FileStatus;
   transcription: string;
@@ -101,31 +101,42 @@ const App: React.FC = () => {
         try {
             let transcription = '';
             let fileName = item.displayName;
+            let generalSummary = '';
+            let businessSummary = '';
 
             // --- ¡NUEVA LÓGICA DE PROCESO! ---
             if (item.source === 'local' && item.file) {
-                // Flujo normal (subir archivo)
-                const data = await runTranscription(item.file);
-                transcription = data.transcription;
+                // Flujo local: 3 llamadas separadas
+                const transData = await runTranscription(item.file);
+                transcription = transData.transcription;
+                fileName = transData.fileName;
+
+                updateFileInQueue(itemId, { transcription: transcription, displayName: fileName });
+                setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
+
+                generalSummary = await runGeneralSummary(transcription);
+                updateFileInQueue(itemId, { generalSummary: generalSummary });
+
+                businessSummary = await runBusinessSummary(transcription, globalInstructions);
+
             } else if (item.source === 'drive' && item.driveFileId) {
-                // Flujo de Google Drive (llamar al nuevo endpoint)
-                const data = await runTranscriptionFromDrive(item.driveFileId);
+                // Flujo de Drive: 1 llamada que hace todo
+                setStatus(`Procesando (Drive): ${item.displayName}...`);
+                const data = await runTranscriptionFromDrive(item.driveFileId, globalInstructions);
                 transcription = data.transcription;
-                fileName = data.fileName; // Obtenemos el nombre real del archivo
-                updateFileInQueue(itemId, { displayName: fileName }); // Actualizamos el nombre en la UI
+                fileName = data.fileName;
+                generalSummary = data.generalSummary;
+                businessSummary = data.businessSummary;
             } else {
                 throw new Error("Archivo inválido en la cola.");
             }
             // --- FIN DE LÓGICA ---
 
-            updateFileInQueue(itemId, { transcription: transcription });
-            setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
-
-            const generalSummary = await runGeneralSummary(transcription);
-            updateFileInQueue(itemId, { generalSummary: generalSummary });
-
-            const businessSummary = await runBusinessSummary(transcription, globalInstructions);
+            // Actualiza la cola con todos los datos al final
             updateFileInQueue(itemId, { 
+                displayName: fileName,
+                transcription: transcription,
+                generalSummary: generalSummary,
                 businessSummary: businessSummary, 
                 status: 'completed' 
             });
@@ -167,11 +178,9 @@ const App: React.FC = () => {
 
     const parseDriveLinks = (text: string): string[] => {
         const ids: string[] = [];
-        // Expresión regular para encontrar IDs de Google Drive en las URLs
         const regex = /\/file\/d\/([a-zA-Z0-9_-]{33})|id=([a-zA-Z0-9_-]{33})/g;
         let match;
         while ((match = regex.exec(text)) !== null) {
-            // El ID puede estar en el grupo 1 o 2
             ids.push(match[1] || match[2]);
         }
         return ids;
@@ -188,10 +197,10 @@ const App: React.FC = () => {
         for (const id of fileIds) {
             const newFileItem: FileQueueItem = {
                 id: `drive-${id}-${new Date().getTime()}`,
-                file: null, // No hay archivo local
+                file: null,
                 driveFileId: id,
                 source: 'drive',
-                displayName: `Archivo de Drive (ID: ...${id.slice(-6)})`, // Nombre temporal
+                displayName: `Archivo de Drive (ID: ...${id.slice(-6)})`, 
                 status: 'pending',
                 transcription: '',
                 generalSummary: '',
@@ -202,10 +211,10 @@ const App: React.FC = () => {
 
         setFileQueue(prevQueue => [...prevQueue, ...newFiles]);
         setStatus(`${newFiles.length} archivo(s) de Drive añadidos a la cola.`);
-        setShowDriveModal(false); // Cierra el modal
-        setDriveLinks(''); // Limpia el textarea
+        setShowDriveModal(false); 
+        setDriveLinks(''); 
 
-        // Inicia el procesamiento en lote para los nuevos archivos
+        // Inicia el procesamiento en lote
         setIsLoading(true); 
         setStatus(`Iniciando procesamiento de ${newFiles.length} archivos de Drive...`);
 
@@ -222,7 +231,6 @@ const App: React.FC = () => {
     
     // --- LÓGICA DE DESCARGA (ACTUALIZADA) ---
     const generateDocumentContent = (item: FileQueueItem): string => {
-        // Usa displayName en lugar de file.name
         return `
 =========================================
 REGISTRO DE LLAMADA
@@ -262,7 +270,6 @@ ${item.businessSummary}
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        // Usa displayName para el nombre del archivo .txt
         const baseFilename = item.displayName.split('.').slice(0, -1).join('.') || item.displayName;
         link.download = `${baseFilename}.txt`;
         document.body.appendChild(link);
@@ -421,7 +428,7 @@ ${item.businessSummary}
                             onClick={() => setShowDriveModal(true)} 
                             style={{...styles.button, ...styles.buttonGreen, flex: 1}}
                         >
-                            Subir desde Google Drive
+                            Procesar desde Google Drive
                         </button>
                     </div>
                 </div>
@@ -446,7 +453,7 @@ ${item.businessSummary}
                             {fileQueue.map((item) => (
                                 <div key={item.id}>
                                     <div style={styles.queueItem}>
-                                        <span style={styles.queueItemName}>{item.displayName}</span> {/* <-- Usa displayName */}
+                                        <span style={styles.queueItemName}>{item.displayName}</span>
                                         <span style={{...styles.queueItemStatus, ...getStatusStyle(item.status)}}>
                                             {item.status === 'error' ? 'Error' : item.status === 'completed' ? 'Completado' : item.status === 'processing' ? 'Procesando...' : 'Pendiente'}
                                         </span>
@@ -480,11 +487,11 @@ ${item.businessSummary}
                                         <div style={{...styles.queueItem, borderTop: '1px dashed #fde7e7'}}>
                                             {(item.errorMessage.includes('PROHIBITED_CONTENT') || item.errorMessage.includes('blocked')) ? (
                                                 <span style={styles.errorText}>
-                                                    <strong>Contenido Prohibido:</strong> Google ha bloqueado este audio. Elimine este archivo o transcriba manually.
+                                                    <strong>Contenido Prohibido:</strong> Google ha bloqueado este audio. Elimine este archivo.
                                                 </span>
                                             ) : (
                                                 <span style={styles.errorText}>
-                                                    <strong>Servidor Ocupado / Error:</strong> Intente de nuevo en 1 minuto con el botón "Procesar". (Error: {item.errorMessage.substring(0, 50)}...)
+                                                    <strong>Error:</strong> {item.errorMessage.substring(0, 200)}...
                                                 </span>
                                             )}
                                         </div>
@@ -617,6 +624,7 @@ ${item.businessSummary}
 // ---   FUNCIONES HELPER DEL BACKEND     ---
 // --- ================================== ---
 
+// Procesa un archivo local
 const runTranscription = async (file: File): Promise<{transcription: string, fileName: string}> => {
     const formData = new FormData();
     formData.append('file', file); 
@@ -632,13 +640,14 @@ const runTranscription = async (file: File): Promise<{transcription: string, fil
     }
 
     const data = await response.json();
-    return { transcription: data.transcription ?? "", fileName: file.name };
+    return { transcription: data.transcription ?? "", fileName: data.fileName };
 };
 
-// --- ¡NUEVA FUNCIÓN HELPER! ---
-const runTranscriptionFromDrive = async (driveFileId: string): Promise<{transcription: string, fileName: string}> => {
+// Procesa un archivo de Drive
+const runTranscriptionFromDrive = async (driveFileId: string, instructions: string[]): Promise<{transcription: string, fileName: string, generalSummary: string, businessSummary: string}> => {
     const body = JSON.stringify({
-        drive_file_id: driveFileId
+        drive_file_id: driveFileId,
+        instructions: instructions // Pasamos las instrucciones permanentes
     });
 
     const response = await fetch('https://mjtranscripciones.onrender.com/transcribe-from-drive', {
@@ -653,17 +662,21 @@ const runTranscriptionFromDrive = async (driveFileId: string): Promise<{transcri
     }
 
     const data = await response.json();
-    // El backend ahora devuelve el nombre del archivo y la transcripción
-    return { transcription: data.transcription ?? "", fileName: data.fileName ?? `DriveFile_${driveFileId.slice(-4)}` };
+    return { 
+        transcription: data.transcription ?? "", 
+        fileName: data.fileName ?? `DriveFile_${driveFileId.slice(-4)}`,
+        generalSummary: data.generalSummary ?? "",
+        businessSummary: data.businessSummary ?? ""
+    };
 };
 
-
+// ¡Estas funciones ahora SÓLO las usa el flujo "local"!
 const runGeneralSummary = async (transcription: string): Promise<string> => {
     const body = JSON.stringify({
         transcription: transcription 
     });
 
-    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-general', {
+    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-general-legacy', { // Cambiado a un endpoint que ya no existe (para evitar uso)
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body,
@@ -684,7 +697,7 @@ const runBusinessSummary = async (transcription: string, instructions: string[])
         instructions: instructions 
     });
 
-    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-business', {
+    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-business-legacy', { // Cambiado a un endpoint que ya no existe (para evitar uso)
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body,
