@@ -83,7 +83,7 @@ class BusinessSummaryRequest(BaseModel):
 
 class DriveRequest(BaseModel):
     drive_file_id: str
-    instructions: list[str] = Field(default_factory=list)
+    instructions: list[str] = Field(default_factory=list) 
 
 # --- Función Helper para el contenido del TXT ---
 def generate_document_content(file_name: str, transcription: str, general_summary: str, business_summary: str) -> str:

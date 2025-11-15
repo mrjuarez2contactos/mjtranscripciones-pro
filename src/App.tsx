@@ -104,7 +104,6 @@ const App: React.FC = () => {
             let generalSummary = '';
             let businessSummary = '';
 
-            // --- ¡NUEVA LÓGICA DE PROCESO! ---
             if (item.source === 'local' && item.file) {
                 // Flujo local: 3 llamadas separadas
                 const transData = await runTranscription(item.file);
@@ -114,8 +113,6 @@ const App: React.FC = () => {
                 updateFileInQueue(itemId, { transcription: transcription, displayName: fileName });
                 setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
 
-                // --- ¡ARREGLO DE ERROR 404! ---
-                // Volvemos a llamar a los endpoints correctos
                 generalSummary = await runGeneralSummary_LEGACY(transcription); 
                 updateFileInQueue(itemId, { generalSummary: generalSummary });
                 businessSummary = await runBusinessSummary_LEGACY(transcription, globalInstructions); 
@@ -132,7 +129,6 @@ const App: React.FC = () => {
             } else {
                 throw new Error("Archivo inválido en la cola.");
             }
-            // --- FIN DE LÓGICA ---
 
             updateFileInQueue(itemId, { 
                 displayName: fileName,
@@ -406,7 +402,6 @@ ${item.businessSummary}
 
                 <div style={styles.card}>
                     <h2>1. Sube tus archivos</h2>
-                    {/* --- BOTONES ACTUALIZADOS --- */}
                     <div style={{display: 'flex', gap: '1rem'}}>
                         <label htmlFor="file-upload" style={{...styles.button, cursor: 'pointer', flex: 1, textAlign: 'center'}}>
                             Subir desde PC
@@ -477,7 +472,6 @@ ${item.businessSummary}
                                         </div>
                                     </div>
                                     
-                                    {/* --- MENSAJES DE ERROR LIMPIOS --- */}
                                     {item.status === 'error' && item.errorMessage && (
                                         <div style={{...styles.queueItem, borderTop: '1px dashed #fde7e7'}}>
                                             {(item.errorMessage.includes('PROHIBITED_CONTENT') || item.errorMessage.includes('blocked')) ? (
@@ -510,7 +504,6 @@ ${item.businessSummary}
                     </div>
                 )}
 
-                {/* --- ¡NUEVO MODAL DE DRIVE! --- */}
                  {showDriveModal && (
                     <div style={styles.modalOverlay} onClick={() => setShowDriveModal(false)}>
                         <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
@@ -531,7 +524,6 @@ ${item.businessSummary}
                                     style={{...styles.button, ...styles.buttonGreen}}
                                     disabled={isLoading || driveLinks.length === 0}
                                 >
-                                    {/* --- ¡TEXTO DEL BOTÓN CORREGIDO! --- */}
                                     Añadir a la Cola
                                 </button>
                             </div>
