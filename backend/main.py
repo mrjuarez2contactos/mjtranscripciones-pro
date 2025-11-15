@@ -118,7 +118,6 @@ def read_root():
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
-    # (Este endpoint no cambia)
     if not file:
         raise HTTPException(status_code=400, detail="No se subió ningún archivo.")
     try:
@@ -136,9 +135,6 @@ async def transcribe_audio(file: UploadFile = File(...)):
         if file:
             await file.close()
 
-# --- ================================== ---
-# ---    ENDPOINT PRINCIPAL (ACTUALIZADO)   ---
-# --- ================================== ---
 @app.post("/transcribe-from-drive")
 async def transcribe_from_drive(request: DriveRequest):
     if not drive_service:
@@ -149,29 +145,21 @@ async def transcribe_from_drive(request: DriveRequest):
     try:
         file_id = request.drive_file_id
         
-        # 1. Obtener metadatos (nombre, tipo, y carpeta padre)
         file_metadata = drive_service.files().get(fileId=file_id, fields='mimeType, name, parents').execute()
         mime_type = file_metadata.get('mimeType')
         original_name = file_metadata.get('name')
         
-        # --- ================================== ---
-        # ---      ¡AQUÍ ESTÁ EL "AVISO"!        ---
-        # --- ================================== ---
-        # Si el tipo es una carpeta, falla con un error 400 (Petición incorrecta)
         if mime_type == 'application/vnd.google-apps.folder':
             print(f"Error: El ID {file_id} es de una CARPETA, no de un archivo.")
             raise HTTPException(status_code=400, detail="Error: El link es de una CARPETA, no de un archivo. Por favor, copia el link del archivo .m4a")
-        # --- ================================== ---
 
         original_parent = file_metadata.get('parents')[0] 
         
-        # 2. Renombrar
         new_name = original_name
         if original_name.startswith("Grabacion de llamada "):
             new_name = original_name.replace("Grabacion de llamada ", "", 1)
             print(f"Renombrando: '{original_name}' -> '{new_name}'")
         
-        # 3. Descargar el archivo
         print(f"Descargando: {new_name} ({mime_type})")
         drive_request = drive_service.files().get_media(fileId=file_id)
         file_bytes_io = io.BytesIO()
@@ -180,14 +168,22 @@ async def transcribe_from_drive(request: DriveRequest):
         while done is False:
             status, done = downloader.next_chunk()
 
-        # 4. Transcribir (Gemini Flash)
+        # --- ================================== ---
+        # ---      ¡AQUÍ ESTÁ EL ARREGLO!        ---
+        # --- ================================== ---
+        # Forzamos el mime_type si es 3gpp, ya que sabemos que es audio m4a
+        if mime_type == 'video/3gpp' or mime_type == 'audio/3gpp':
+            print(f"Tipo MIME '{mime_type}' detectado. Forzando a 'audio/m4a' para Gemini.")
+            mime_type = 'audio/m4a'
+        # --- ================================== ---
+
         print("Transcribiendo...")
         audio_part = { "mime_type": mime_type, "data": file_bytes_io.getvalue() }
         model_flash = genai.GenerativeModel(model_name="gemini-2.5-flash", safety_settings=safety_settings)
+        
         response_flash = await model_flash.generate_content_async(["Transcribe this audio recording.", audio_part])
         transcription = response_flash.text
 
-        # 5. Resumen General (Gemini Pro)
         print("Generando Resumen General...")
         prompt_general = f"""Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso...
         Transcripción:
@@ -199,7 +195,6 @@ async def transcribe_from_drive(request: DriveRequest):
         response_general = await model_pro.generate_content_async(prompt_general)
         general_summary = response_general.text
 
-        # 6. Resumen de Negocio (Gemini Pro)
         print("Generando Resumen de Negocio...")
         permanent_instructions_text = ""
         if request.instructions:
@@ -216,7 +211,6 @@ async def transcribe_from_drive(request: DriveRequest):
         response_business = await model_pro.generate_content_async(prompt_business)
         business_summary = response_business.text
 
-        # 7. Crear el archivo .txt
         print(f"Creando archivo .txt en carpeta {FOLDER_ID_TXT_DESTINATION}...")
         txt_content = generate_document_content(new_name, transcription, general_summary, business_summary)
         txt_filename = f"{new_name.split('.')[0]}.txt"
@@ -227,7 +221,6 @@ async def transcribe_from_drive(request: DriveRequest):
             media_body=txt_media
         ).execute()
 
-        # 8. Mover el .m4a
         print(f"Moviendo .m4a a carpeta {FOLDER_ID_M4A_DESTINATION}...")
         drive_service.files().update(
             fileId=file_id,
@@ -246,10 +239,8 @@ async def transcribe_from_drive(request: DriveRequest):
 
     except Exception as e:
         print(f"Error en /transcribe-from-drive: {e}")
-        # Si el error es el que acabamos de crear (un 400), lo pasamos al frontend
         if isinstance(e, HTTPException):
             raise e
-        # Si es otro error (un 500), lo registramos
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/summarize-general")
