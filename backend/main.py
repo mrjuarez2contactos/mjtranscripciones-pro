@@ -8,8 +8,8 @@ import google.generativeai as genai
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-# --- Importaciones de Google Drive ---
-from google.oauth2 import service_account
+# --- Importaciones de Google Drive (OAuth) ---
+from google.oauth2 import credentials # ¡Cambiado!
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaInMemoryUpload
 from datetime import datetime 
@@ -22,8 +22,14 @@ if os.getenv("RENDER") != "true":
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# --- Configuración de Google Drive ---
-SERVICE_ACCOUNT_JSON_STRING = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+# --- ================================== ---
+# ---  ¡NUEVA CONFIGURACIÓN DE GOOGLE (OAUTH)! ---
+# --- ================================== ---
+CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
+TOKEN_URI = "https://oauth2.googleapis.com/token"
+
 FOLDER_ID_M4A_DESTINATION = os.getenv("FOLDER_ID_M4A_DESTINATION")
 FOLDER_ID_TXT_DESTINATION = os.getenv("FOLDER_ID_TXT_DESTINATION")
 
@@ -32,18 +38,28 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 creds = None
 drive_service = None
 
-if not all([SERVICE_ACCOUNT_JSON_STRING, FOLDER_ID_M4A_DESTINATION, FOLDER_ID_TXT_DESTINATION, os.getenv("GEMINI_API_KEY")]):
-    print("ADVERTENCIA: Faltan una o más variables de entorno (JSON, M4A_DEST, TXT_DEST o GEMINI_API_KEY).")
+# Verifica que todas las variables de entorno necesarias estén cargadas
+if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, FOLDER_ID_M4A_DESTINATION, FOLDER_ID_TXT_DESTINATION, os.getenv("GEMINI_API_KEY")]):
+    print("ADVERTENCIA: Faltan una o más variables de entorno de OAuth o de carpetas.")
 else:
     try:
-        SERVICE_ACCOUNT_INFO = json.loads(SERVICE_ACCOUNT_JSON_STRING)
-        creds = service_account.Credentials.from_service_account_info(
-            SERVICE_ACCOUNT_INFO, scopes=SCOPES
+        # Construye las credenciales usando la "Llave Maestra" (Refresh Token)
+        creds = credentials.Credentials(
+            None, # No tenemos un 'access_token' ahora, pero sí el refresh_token
+            refresh_token=REFRESH_TOKEN,
+            token_uri=TOKEN_URI,
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+            scopes=SCOPES
         )
+        
+        # (Opcional pero recomendado) Refrescar el token al inicio
+        creds.refresh(None) 
+        
         drive_service = build('drive', 'v3', credentials=creds)
-        print("Servicio de Google Drive y credenciales cargados exitosamente.")
+        print("Servicio de Google Drive y credenciales OAuth cargados exitosamente.")
     except Exception as e:
-        print(f"Error al cargar credenciales de Google Drive: {e}")
+        print(f"Error al cargar credenciales de Google Drive (OAuth): {e}")
 
 app = FastAPI()
 
@@ -60,7 +76,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Lista de Seguridad Corregida ---
+# --- Lista de Seguridad ---
 safety_settings = [
     {"category": genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE},
     {"category": genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE},
@@ -118,6 +134,7 @@ def read_root():
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
+    # (Este endpoint no cambia)
     if not file:
         raise HTTPException(status_code=400, detail="No se subió ningún archivo.")
     try:
@@ -145,7 +162,14 @@ async def transcribe_from_drive(request: DriveRequest):
     try:
         file_id = request.drive_file_id
         
-        file_metadata = drive_service.files().get(fileId=file_id, fields='mimeType, name, parents').execute()
+        # 1. Obtener metadatos (nombre, tipo, y carpeta padre)
+        # ¡Añadimos 'supportsAllDrives=True' para que funcione con carpetas compartidas!
+        file_metadata = drive_service.files().get(
+            fileId=file_id, 
+            fields='mimeType, name, parents',
+            supportsAllDrives=True # ¡IMPORTANTE!
+        ).execute()
+        
         mime_type = file_metadata.get('mimeType')
         original_name = file_metadata.get('name')
         
@@ -161,21 +185,16 @@ async def transcribe_from_drive(request: DriveRequest):
             print(f"Renombrando: '{original_name}' -> '{new_name}'")
         
         print(f"Descargando: {new_name} ({mime_type})")
-        drive_request = drive_service.files().get_media(fileId=file_id)
+        drive_request = drive_service.files().get_media(fileId=file_id, supportsAllDrives=True)
         file_bytes_io = io.BytesIO()
         downloader = MediaIoBaseDownload(file_bytes_io, drive_request)
         done = False
         while done is False:
             status, done = downloader.next_chunk()
 
-        # --- ================================== ---
-        # ---      ¡AQUÍ ESTÁ EL ARREGLO!        ---
-        # --- ================================== ---
-        # Forzamos el mime_type si es 3gpp, ya que sabemos que es audio m4a
         if mime_type == 'video/3gpp' or mime_type == 'audio/3gpp':
             print(f"Tipo MIME '{mime_type}' detectado. Forzando a 'audio/m4a' para Gemini.")
             mime_type = 'audio/m4a'
-        # --- ================================== ---
 
         print("Transcribiendo...")
         audio_part = { "mime_type": mime_type, "data": file_bytes_io.getvalue() }
@@ -218,7 +237,8 @@ async def transcribe_from_drive(request: DriveRequest):
         txt_media = MediaInMemoryUpload(txt_content.encode('utf-8'), mimetype='text/plain')
         drive_service.files().create(
             body={'name': txt_filename, 'parents': [FOLDER_ID_TXT_DESTINATION]},
-            media_body=txt_media
+            media_body=txt_media,
+            supportsAllDrives=True # ¡IMPORTANTE!
         ).execute()
 
         print(f"Moviendo .m4a a carpeta {FOLDER_ID_M4A_DESTINATION}...")
@@ -226,7 +246,8 @@ async def transcribe_from_drive(request: DriveRequest):
             fileId=file_id,
             addParents=FOLDER_ID_M4A_DESTINATION,
             removeParents=original_parent,
-            body={'name': new_name} 
+            body={'name': new_name},
+            supportsAllDrives=True # ¡IMPORTANTE!
         ).execute()
 
         print(f"Proceso completado para: {new_name}")
