@@ -13,7 +13,7 @@ from google.oauth2 import credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaInMemoryUpload
 from datetime import datetime 
-from google.auth.transport.requests import Request # <-- ¡IMPORTACIÓN NECESARIA!
+from google.auth.transport.requests import Request
 # --- Fin de Importaciones ---
 
 
@@ -23,9 +23,7 @@ if os.getenv("RENDER") != "true":
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# --- ================================== ---
-# ---  ¡NUEVA CONFIGURACIÓN DE GOOGLE (OAUTH)! ---
-# --- ================================== ---
+# --- Configuración de Google Drive ---
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
@@ -43,22 +41,14 @@ if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, FOLDER_ID_M4A_DESTINATION, 
     print("ADVERTENCIA: Faltan una o más variables de entorno de OAuth o de carpetas.")
 else:
     try:
-        # Construye las credenciales usando la "Llave Maestra" (Refresh Token)
         creds = credentials.Credentials(
-            None, # No tenemos un 'access_token' ahora, pero sí el refresh_token
+            None, 
             refresh_token=REFRESH_TOKEN,
             token_uri=TOKEN_URI,
             client_id=CLIENT_ID,
             client_secret=CLIENT_SECRET,
             scopes=SCOPES
         )
-        
-        # --- ================================== ---
-        # ---       ¡ESTA ES LA CORRECCIÓN!      ---
-        # --- ================================== ---
-        # En lugar de creds.refresh(None), que es incorrecto:
-        # 1. Creamos un objeto de 'requests' (que importamos arriba)
-        # 2. Se lo pasamos a refresh()
         creds.refresh(Request()) 
         
         drive_service = build('drive', 'v3', credentials=creds)
@@ -139,6 +129,7 @@ def read_root():
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
+    # (Este endpoint no cambia)
     if not file:
         raise HTTPException(status_code=400, detail="No se subió ningún archivo.")
     try:
@@ -243,14 +234,27 @@ async def transcribe_from_drive(request: DriveRequest):
             supportsAllDrives=True 
         ).execute()
 
+        # --- ================================== ---
+        # ---        ¡ESTA ES LA CORRECCIÓN!     ---
+        # --- ================================== ---
+        
+        # 8. Renombrar el .m4a (Primera llamada a la API)
+        print(f"Renombrando .m4a a: {new_name}")
+        drive_service.files().update(
+            fileId=file_id,
+            body={'name': new_name},
+            supportsAllDrives=True
+        ).execute()
+
+        # 9. Mover el .m4a (Segunda llamada a la API)
         print(f"Moviendo .m4a a carpeta {FOLDER_ID_M4A_DESTINATION}...")
         drive_service.files().update(
             fileId=file_id,
             addParents=FOLDER_ID_M4A_DESTINATION,
             removeParents=original_parent,
-            body={'name': new_name},
             supportsAllDrives=True 
         ).execute()
+        # --- ================================== ---
 
         print(f"Proceso completado para: {new_name}")
         return {
