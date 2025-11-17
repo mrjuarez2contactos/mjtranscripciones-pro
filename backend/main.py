@@ -129,7 +129,6 @@ def read_root():
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
-    # (Este endpoint no cambia)
     if not file:
         raise HTTPException(status_code=400, detail="No se subió ningún archivo.")
     try:
@@ -172,9 +171,12 @@ async def transcribe_from_drive(request: DriveRequest):
 
         original_parent = file_metadata.get('parents')[0] 
         
+        # --- ================================== ---
+        # ---      ¡ARREGLO DEL ACENTO!          ---
+        # --- ================================== ---
         new_name = original_name
-        if original_name.startswith("Grabacion de llamada "):
-            new_name = original_name.replace("Grabacion de llamada ", "", 1)
+        if original_name.startswith("Grabación de llamada "): # Con acento
+            new_name = original_name.replace("Grabación de llamada ", "", 1) # Con acento
             print(f"Renombrando: '{original_name}' -> '{new_name}'")
         
         print(f"Descargando: {new_name} ({mime_type})")
@@ -234,27 +236,14 @@ async def transcribe_from_drive(request: DriveRequest):
             supportsAllDrives=True 
         ).execute()
 
-        # --- ================================== ---
-        # ---        ¡ESTA ES LA CORRECCIÓN!     ---
-        # --- ================================== ---
-        
-        # 8. Renombrar el .m4a (Primera llamada a la API)
-        print(f"Renombrando .m4a a: {new_name}")
-        drive_service.files().update(
-            fileId=file_id,
-            body={'name': new_name},
-            supportsAllDrives=True
-        ).execute()
-
-        # 9. Mover el .m4a (Segunda llamada a la API)
         print(f"Moviendo .m4a a carpeta {FOLDER_ID_M4A_DESTINATION}...")
         drive_service.files().update(
             fileId=file_id,
             addParents=FOLDER_ID_M4A_DESTINATION,
             removeParents=original_parent,
+            body={'name': new_name},
             supportsAllDrives=True 
         ).execute()
-        # --- ================================== ---
 
         print(f"Proceso completado para: {new_name}")
         return {
@@ -272,7 +261,7 @@ async def transcribe_from_drive(request: DriveRequest):
 
 @app.post("/summarize-general")
 async def summarize_general(request: GeneralSummaryRequest):
-    print("Llamada a /summarize-general (flujo local)")
+    print("Llamada a /summarTize-general (flujo local)")
     try:
         prompt = f"""Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso...
         Transcripción:
