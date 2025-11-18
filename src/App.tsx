@@ -172,24 +172,17 @@ const App: React.FC = () => {
         }
     };
 
+    // --- ESTA ES LA VERSIÓN CORREGIDA DE 'handleProcessAll' (LA DE TU ZIP) ---
     const handleProcessAll = async () => {
-        setIsLoading(true); 
-        setStatus(`Iniciando procesamiento por lotes...`);
-
-        // Obtenemos la lista de pendientes *en este momento*
-        let pendingFiles: FileQueueItem[] = [];
-        setFileQueue(currentQueue => {
-            pendingFiles = currentQueue.filter(item => item.status === 'pending');
-            return currentQueue;
-        });
+        const pendingFiles = fileQueue.filter(item => item.status === 'pending');
 
         if (pendingFiles.length === 0) {
             setStatus("No hay archivos pendientes para procesar.");
-            setIsLoading(false);
             return;
         }
         
-        setStatus(`Procesando ${pendingFiles.length} archivos...`);
+        setIsLoading(true); 
+        setStatus(`Iniciando procesamiento por lotes de ${pendingFiles.length} archivos...`);
 
         for (const item of pendingFiles) {
             await processSingleFile(item.id);
@@ -249,7 +242,7 @@ const App: React.FC = () => {
     };
     // --- ================================ ---
 
-    // === NUEVA FUNCIÓN PARA OBTENER DATOS DE SHEETS ===
+    // === ¡¡FUNCIONES DEL VISOR QUE FALTABAN!! ===
     const handleActualizarDesdeDrive = async () => {
         const sheetsApiUrl = import.meta.env.VITE_SHEETS_API_URL;
         
@@ -288,7 +281,7 @@ const App: React.FC = () => {
         }
     };
 
-    // === LÓGICA DE FILTRADO Y ORDENADO (VISOR) ===
+    // === ¡¡FUNCIÓN DEL VISOR QUE FALTABA!! ===
     const getFilteredAndSortedAnotaciones = () => {
         return anotaciones
             .filter(a => 
