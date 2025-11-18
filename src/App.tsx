@@ -27,6 +27,18 @@ interface Anotacion {
 }
 // --- ================================== ---
 
+// Helper para obtener el estilo del estado (MOVÍ ESTA FUNCIÓN AQUÍ)
+const getStatusStyle = (styles: { [key: string]: React.CSSProperties }, status: FileStatus): React.CSSProperties => {
+    switch (status) {
+        case 'processing': return styles.statusProcessing;
+        case 'completed': return styles.statusCompleted;
+        case 'error': return styles.statusError;
+        case 'pending':
+        default:
+            return styles.statusPending;
+    }
+};
+
 const App: React.FC = () => {
     
     const [fileQueue, setFileQueue] = useState<FileQueueItem[]>([]);
@@ -155,9 +167,9 @@ const App: React.FC = () => {
             // Marcar como completado
             updateFileInQueue(itemId, { 
                 displayName: fileName,
-                transcription,
-                generalSummary,
-                businessSummary, 
+                transcription: transcription,
+                generalSummary: generalSummary,
+                businessSummary: businessSummary, 
                 status: 'completed' 
             });
             setStatus(`Completado: ${fileName}`);
@@ -175,13 +187,11 @@ const App: React.FC = () => {
         }
     };
 
-    // --- ESTA ES LA VERSIÓN CORREGIDA DE 'handleProcessAll' (LA DE TU ZIP) ---
+    // ESTA ES LA VERSIÓN CORREGIDA DE 'handleProcessAll' (LA DE TU ZIP)
     // Esto arregla el problema de que "se paraba"
     const handleProcessAll = async () => {
         // Ahora recogemos PENDIENTES y los que están en ERROR, para reintentar
-        const idsToProcess = fileQueue
-            .filter(item => item.status === 'pending' || item.status === 'error')
-            .map(item => item.id); // Usar solo IDs para evitar errores de estado
+        const idsToProcess = fileQueue.filter(item => item.status === 'pending' || item.status === 'error');
 
         if (idsToProcess.length === 0) {
             setStatus("No hay archivos pendientes para procesar.");
@@ -191,28 +201,14 @@ const App: React.FC = () => {
         setIsLoading(true); 
         setStatus(`Iniciando procesamiento por lotes de ${idsToProcess.length} archivos...`);
 
-        // 2. Iteramos sobre los IDs fijos, esperando cada uno
-        for (let i = 0; i < idsToProcess.length; i++) {
-            const id = idsToProcess[i];
-            
-            // Procesamos y ESPERAMOS a que termine antes de ir al siguiente
-            await processSingleFile(id);
-            
-            // Pausa entre archivos para evitar rate limiting y sincronización de estado
-            if (i < idsToProcess.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
+        for (const item of idsToProcess) {
+            await processSingleFile(item.id);
+            // Pequeña pausa para evitar rate limiting (opcional pero recomendado)
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         setIsLoading(false); 
         setStatus("Procesamiento por lotes finalizado.");
-    };
-
-    // Wrapper para el botón individual (se utiliza processSingleFile directamente)
-    const handleProcessSingleWrapper = async (id: string) => {
-        setIsLoading(true);
-        await processSingleFile(id);
-        setIsLoading(false);
     };
     
     // --- GOOGLE DRIVE ---
@@ -227,6 +223,9 @@ const App: React.FC = () => {
         return [...new Set(ids)]; // Devuelve solo IDs únicos
     };
 
+    // --- ================================== ---
+    // ---     FUNCIÓN DE DRIVE CORREGIDA!     ---
+    // --- ================================== ---
     const handleProcessDriveLinks = () => { // Ya no es async
         const fileIds = parseDriveLinks(driveLinks);
         if (fileIds.length === 0) {
@@ -257,7 +256,7 @@ const App: React.FC = () => {
     };
     // --- ================================ ---
 
-    // === ¡¡FUNCIONES DEL VISOR QUE FALTABAN!! ===
+    // === FUNCIONES DEL VISOR ===
     const handleActualizarDesdeDrive = async () => {
         const sheetsApiUrl = import.meta.env.VITE_SHEETS_API_URL;
         
@@ -273,20 +272,21 @@ const App: React.FC = () => {
         try {
             const response = await fetch(sheetsApiUrl);
             if (!response.ok) {
-                throw new Error(`Red: ${response.statusText}`);
+                // Generamos un error específico para debuggear el Apps Script
+                throw new Error(`Red: ${response.statusText}. ¿Tu Apps Script tiene permisos 'Cualquiera' y es la última versión publicada?`);
             }
             const data: Anotacion[] | { error: string } = await response.json();
 
-            if (data && typeof data === 'object' && 'error' in data) {
-                throw new Error(`Apps Script: ${data.error}`);
+            if (data && typeof data === 'object' && data.error) {
+                throw new Error(`Apps Script Error: ${data.error}`);
             }
 
             if(Array.isArray(data)) {
                 setAnotaciones(data);
-                setStatus(`Se cargaron ${data.length} anotaciones.`);
+                setStatus(`${data.length} resúmenes cargados.`);
                 setShowAnotaciones(true); // Mostrar la vista
             } else {
-                throw new Error("La respuesta de la API no fue un array.");
+                throw new Error("Formato de datos incorrecto.");
             }
         } catch (error) {
             console.error('Error al obtener anotaciones:', error);
@@ -296,16 +296,15 @@ const App: React.FC = () => {
         }
     };
 
-    // === ¡¡FUNCIÓN DEL VISOR QUE FALTABA!! ===
     const getFilteredAndSortedAnotaciones = () => {
         return anotaciones
-            .filter(a => 
-                (a.contacto && a.contacto.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                (a.resumen && a.resumen.toLowerCase().includes(searchTerm.toLowerCase()))
+            .filter((a: Anotacion) => 
+                (a.contacto || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (a.resumen || '').toLowerCase().includes(searchTerm.toLowerCase())
             )
-            .sort((a, b) => {
-                const dateA = new Date(a.fecha).getTime();
-                const dateB = new Date(b.fecha).getTime();
+            .sort((a: Anotacion, b: Anotacion) => {
+                const dateA = new Date(a.fecha || 0).getTime();
+                const dateB = new Date(b.fecha || 0).getTime();
                 if (sortOrder === 'desc') {
                     return dateB - dateA; // Más reciente primero
                 } else {
@@ -460,7 +459,7 @@ ${item.businessSummary}
                         </div>
                         <p style={styles.status}>{status}</p>
                         <div style={{maxHeight: '600px', overflowY: 'auto'}}>
-                             {filteredAnotaciones.map((a, i) => (
+                             {filteredAnotaciones.map((a: Anotacion, i) => (
                                 <div key={i} style={styles.anotacionItem}>
                                     <div style={styles.anotacionHeader}>
                                         <span style={{color: '#1877f2'}}>{a.contacto}</span>
@@ -508,7 +507,7 @@ ${item.businessSummary}
                                                 <div style={{flex: 1}}>
                                                     <span style={styles.queueItemName}>{item.displayName}</span>
                                                     <br/>
-                                                    <span style={getStatusStyle(item.status)}>
+                                                    <span style={getStatusStyle(styles, item.status)}> {/* CORREGIDO: Usando getStatusStyle(styles, status) */}
                                                         {item.status === 'error' ? 'Error' : item.status === 'completed' ? 'Completado' : item.status === 'processing' ? 'Procesando...' : 'Pendiente'}
                                                     </span>
                                                 </div>
