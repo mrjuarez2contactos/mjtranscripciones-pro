@@ -27,13 +27,61 @@ interface Anotacion {
 }
 // --- ================================== ---
 
+// --- ESTILOS (DEFINICIÓN GLOBAL) ---
+const styles: { [key: string]: React.CSSProperties } = {
+    container: { fontFamily: 'sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh', padding: '2rem' },
+    header: { textAlign: 'center', marginBottom: '1rem', color: '#1c1e21' },
+    card: { backgroundColor: 'white', padding: '2rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)', marginBottom: '1.5rem' },
+    button: { backgroundColor: '#1877f2', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '6px', fontSize: '16px', cursor: 'pointer', margin: '0.5rem 0', display: 'inline-block' },
+    buttonDisabled: { backgroundColor: '#a0bdf5', cursor: 'not-allowed' },
+    buttonGreen: { backgroundColor: '#36a420' }, 
+    buttonSmall: { padding: '8px 12px', fontSize: '14px', marginRight: '0.5rem' }, 
+    textarea: { width: '100%', minHeight: '150px', padding: '10px', borderRadius: '6px', border: '1px solid #dddfe2', fontSize: '14px', marginTop: '1rem' },
+    status: { textAlign: 'center', margin: '1.5rem 0', color: 'rgb(24, 119, 242)', fontWeight: 'bold' }, // Color ajustado para 'Actualizando'
+    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+    modalContent: { backgroundColor: 'white', padding: '2rem', borderRadius: '8px', width: '90%', maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto' },
+    modalInput: { width: 'calc(100% - 100px)', padding: '10px', borderRadius: '6px', border: '1px solid #dddfe2' },
+    instructionItem: { display: 'flex', justifyContent: 'space-between', padding: '10px', borderBottom: '1px solid #eee' },
+    deleteButton: { backgroundColor: '#fa3e3e', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' },
+    
+    // Cola
+    queueContainer: { maxHeight: '400px', overflowY: 'auto', border: '1px solid #dddfe2', borderRadius: '6px', padding: '1rem' },
+    queueItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', borderBottom: '1px solid #eee', flexWrap: 'wrap' },
+    queueItemName: { flexGrow: 1, marginRight: '1rem', wordBreak: 'break-all' },
+    queueItemStatus: { fontWeight: 'bold', minWidth: '100px', textAlign: 'right', marginRight: '1rem', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' },
+    statusPending: { color: '#606770', backgroundColor: '#f0f2f5' },
+    statusProcessing: { color: '#1877f2', backgroundColor: '#e7f3ff' },
+    statusCompleted: { color: '#36a420', backgroundColor: '#e6f7e2' },
+    statusError: { color: '#fa3e3e', backgroundColor: '#fde7e7' },
+    errorText: { fontSize: '12px', color: '#fa3e3e', marginTop: '4px', paddingLeft: '0.75rem', paddingRight: '0.75rem', paddingBottom: '0.75rem', width: '100%' },
+    
+    // Visor
+    visorContainer: { backgroundColor: 'white', padding: '1.5rem', borderRadius: '8px', marginBottom: '1.5rem' },
+    visorHeader: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' },
+    anotacionItem: { border: '1px solid #eee', padding: '1rem', borderRadius: '6px', marginBottom: '1rem' },
+    anotacionHeader: { display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '0.5rem' },
+    anotacionResumen: { whiteSpace: 'pre-wrap', lineHeight: '1.6' }
+};
+
+// Helper para obtener el estilo del estado (MOVIDA FUERA DEL COMPONENTE)
+const getStatusStyle = (status: FileStatus): React.CSSProperties => {
+    switch (status) {
+        case 'processing': return styles.statusProcessing;
+        case 'completed': return styles.statusCompleted;
+        case 'error': return styles.statusError;
+        case 'pending':
+        default:
+            return styles.statusPending;
+    }
+};
+
 const App: React.FC = () => {
     
     const [fileQueue, setFileQueue] = useState<FileQueueItem[]>([]);
     const [status, setStatus] = useState<string>('Por favor, selecciona archivos de audio o procesa desde Google Drive.');
     const [isLoading, setIsLoading] = useState<boolean>(false); 
 
-    // --- ¡NUEVOS ESTADOS PARA DRIVE! ---
+    // --- ESTADOS PARA DRIVE ---
     const [showDriveModal, setShowDriveModal] = useState(false);
     const [driveLinks, setDriveLinks] = useState('');
 
@@ -43,7 +91,7 @@ const App: React.FC = () => {
     const [newInstruction, setNewInstruction] = useState('');
     const importFileInputRef = useRef<HTMLInputElement>(null);
 
-    // === NUEVOS ESTADOS PARA EL VISOR DE ANOTACIONES ===
+    // === ESTADOS VISOR DE ANOTACIONES ===
     const [showAnotaciones, setShowAnotaciones] = useState<boolean>(false);
     const [anotaciones, setAnotaciones] = useState<Anotacion[]>([]);
     const [searchTerm, setSearchTerm] = useState<string>('');
@@ -102,6 +150,7 @@ const App: React.FC = () => {
         );
     };
 
+    // FUNCIÓN QUE EJECUTA LAS LLAMADAS AL BACKEND
     const processSingleFile = async (itemId: string) => {
         // Usamos una función de callback para asegurar que tenemos el item más actualizado
         let currentItem: FileQueueItem | undefined;
@@ -175,8 +224,7 @@ const App: React.FC = () => {
         }
     };
 
-    // --- ESTA ES LA VERSIÓN CORREGIDA DE 'handleProcessAll' (LA DE TU ZIP) ---
-    // Esto arregla el problema de que "se paraba"
+    // Esto arregla el problema de que "se paraba" (Se vuelve secuencial)
     const handleProcessAll = async () => {
         // Ahora recogemos PENDIENTES y los que están en ERROR, para reintentar
         const idsToProcess = fileQueue.filter(item => item.status === 'pending' || item.status === 'error');
@@ -189,15 +237,24 @@ const App: React.FC = () => {
         setIsLoading(true); 
         setStatus(`Iniciando procesamiento por lotes de ${idsToProcess.length} archivos...`);
 
-        for (const item of idsToProcess) {
-            await processSingleFile(item.id);
-            // Pequeña pausa para evitar rate limiting (opcional pero recomendado)
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        // 2. Iteramos sobre los IDs fijos, esperando cada uno
+        for (let i = 0; i < idsToProcess.length; i++) {
+            const id = idsToProcess[i].id; // Corregido: Obtenemos el ID del objeto
+            
+            // Procesamos y ESPERAMOS a que termine antes de ir al siguiente
+            await processSingleFile(id);
+            
+            // Pausa entre archivos para evitar rate limiting y sincronización de estado
+            if (i < idsToProcess.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         }
 
         setIsLoading(false); 
         setStatus("Procesamiento por lotes finalizado.");
     };
+
+    // CORREGIDO: Eliminé 'handleProcessSingleWrapper' y ajusté las llamadas
     
     // --- GOOGLE DRIVE ---
 
