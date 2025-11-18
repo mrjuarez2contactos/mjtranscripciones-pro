@@ -129,50 +129,50 @@ const App: React.FC = () => {
                 // Flujo local: 3 llamadas separadas
                 const transData = await runTranscription(item.file);
                 transcription = transData.transcription;
-                fileName = transData.fileName;
+            	  fileName = transData.fileName;
 
-                updateFileInQueue(itemId, { transcription: transcription, displayName: fileName });
-                setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
+            	  updateFileInQueue(itemId, { transcription: transcription, displayName: fileName });
+            	  setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
 
-                generalSummary = await runGeneralSummary_LEGACY(transcription); 
-                updateFileInQueue(itemId, { generalSummary: generalSummary });
-                businessSummary = await runBusinessSummary_LEGACY(transcription, globalInstructions); 
+            	  generalSummary = await runGeneralSummary_LEGACY(transcription); 
+            	  updateFileInQueue(itemId, { generalSummary: generalSummary });
+            	  businessSummary = await runBusinessSummary_LEGACY(transcription, globalInstructions); 
 
 
-            } else if (item.source === 'drive' && item.driveFileId) {
-                // Flujo de Drive: 1 llamada que hace todo
-                setStatus(`Procesando (Drive): ${item.displayName}...`);
-                const data = await runTranscriptionFromDrive(item.driveFileId, globalInstructions);
-                transcription = data.transcription;
-                fileName = data.fileName;
-                generalSummary = data.generalSummary;
-                businessSummary = data.businessSummary;
-            } else {
-                throw new Error("Archivo inválido en la cola.");
-            }
+        	  } else if (item.source === 'drive' && item.driveFileId) {
+          	 	  // Flujo de Drive: 1 llamada que hace todo
+          	 	  setStatus(`Procesando (Drive): ${item.displayName}...`);
+          	 	  const data = await runTranscriptionFromDrive(item.driveFileId, globalInstructions);
+          	 	  transcription = data.transcription;
+          	 	  fileName = data.fileName;
+          	 	  generalSummary = data.generalSummary;
+          	 	  businessSummary = data.businessSummary;
+        	  } else {
+          	 	  throw new Error("Archivo inválido en la cola.");
+        	  }
 
-            updateFileInQueue(itemId, { 
-                displayName: fileName,
-                transcription: transcription,
-                generalSummary: generalSummary,
-                businessSummary: businessSummary, 
-                status: 'completed' 
-            });
-            
-            setStatus(`Completado: ${fileName}`);
+        	  updateFileInQueue(itemId, { 
+          	 	  displayName: fileName,
+          	 	  transcription: transcription,
+          	 	  generalSummary: generalSummary,
+          	 	  businessSummary: businessSummary, 
+          	 	  status: 'completed' 
+        	  });
+          	 
+        	  setStatus(`Completado: ${fileName}`);
 
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "Error desconocido";
-            console.error(`Error procesando ${item.displayName}:`, error);
-            updateFileInQueue(itemId, { 
-                status: 'error', 
-                errorMessage: errorMessage 
-            });
-            setStatus(`Error en ${item.displayName}, revisa la cola.`);
-        }
-    };
+      	  } catch (error) {
+        	  const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+        	  console.error(`Error procesando ${item.displayName}:`, error);
+        	  updateFileInQueue(itemId, { 
+          	 	  status: 'error', 
+          	 	  errorMessage: errorMessage 
+        	  });
+        	  setStatus(`Error en ${item.displayName}, revisa la cola.`);
+      	  }
+  	 };
 
-    const handleProcessAll = async () => {
+  	 const handleProcessAll = async () => {
         setIsLoading(true); 
         setStatus(`Iniciando procesamiento por lotes...`);
 
@@ -183,69 +183,69 @@ const App: React.FC = () => {
             return currentQueue;
         });
 
-        if (pendingFiles.length === 0) {
-            setStatus("No hay archivos pendientes para procesar.");
+      	 if (pendingFiles.length === 0) {
+        	  setStatus("No hay archivos pendientes para procesar.");
             setIsLoading(false);
-            return;
-        }
-        
-        setStatus(`Procesando ${pendingFiles.length} archivos...`);
+        	  return;
+      	 }
+      	 
+      	 setStatus(`Procesando ${pendingFiles.length} archivos...`);
 
-        for (const item of pendingFiles) {
-            await processSingleFile(item.id);
+      	 for (const item of pendingFiles) {
+        	  await processSingleFile(item.id);
             // Pequeña pausa para evitar rate limiting (opcional pero recomendado)
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+        	  await new Promise(resolve => setTimeout(resolve, 1000));
+      	 }
 
-        setIsLoading(false); 
-    t     setStatus("Procesamiento por lotes finalizado.");
-    };
-    
-    // --- ¡NUEVAS FUNCIONES DE GOOGLE DRIVE! ---
+      	 setIsLoading(false); 
+    	  setStatus("Procesamiento por lotes finalizado.");
+  	 };
+  	 
+  	 // --- ¡NUEVAS FUNCIONES DE GOOGLE DRIVE! ---
 
-    const parseDriveLinks = (text: string): string[] => {
-        const ids: string[] = [];
-        const regex = /\/file\/d\/([a-zA-Z0-9_-]{33})|id=([a-zA-Z0-9_-]{33})/g;
-        let match;
-        while ((match = regex.exec(text)) !== null) {
-            ids.push(match[1] || match[2]);
-        }
-        return [...new Set(ids)]; // Devuelve solo IDs únicos
-    };
+  	 const parseDriveLinks = (text: string): string[] => {
+    	  const ids: string[] = [];
+    	  const regex = /\/file\/d\/([a-zA-Z0-9_-]{33})|id=([a-zA-Z0-9_-]{33})/g;
+    	  let match;
+    	  while ((match = regex.exec(text)) !== null) {
+      	 	  ids.push(match[1] || match[2]);
+    	  }
+    	  return [...new Set(ids)]; // Devuelve solo IDs únicos
+  	 };
 
-    // --- ================================== ---
-    // ---     ¡FUNCIÓN DE DRIVE CORREGIDA!     ---
-    // --- ================================== ---
-    const handleProcessDriveLinks = () => { // Ya no es async
-        const fileIds = parseDriveLinks(driveLinks);
-        if (fileIds.length === 0) {
-            setStatus("No se encontraron IDs de Google Drive válidos en los enlaces.");
-            return;
-        }
+  	 // --- ================================== ---
+  	 // ---   	 ¡FUNCIÓN DE DRIVE CORREGIDA!   	 ---
+  	 // --- ================================== ---
+  	 const handleProcessDriveLinks = () => { // Ya no es async
+    	  const fileIds = parseDriveLinks(driveLinks);
+    	  if (fileIds.length === 0) {
+      	 	  setStatus("No se encontraron IDs de Google Drive válidos en los enlaces.");
+      	 	  return;
+    	  }
 
-        const newFiles: FileQueueItem[] = [];
-        for (const id of fileIds) {
-            const newFileItem: FileQueueItem = {
-                id: `drive-${id}-${new Date().getTime()}`,
-                file: null,
-                driveFileId: id,
-                source: 'drive',
-                displayName: `Archivo de Drive (ID: ...${id.slice(-6)})`, 
-                status: 'pending',
-                transcription: '',
-                generalSummary: '',
-                businessSummary: '',
-            };
-            newFiles.push(newFileItem);
-        }
+    	  const newFiles: FileQueueItem[] = [];
+    	  for (const id of fileIds) {
+      	 	  const newFileItem: FileQueueItem = {
+        	 	 	  id: `drive-${id}-${new Date().getTime()}`,
+        	 	 	  file: null,
+        	 	 	  driveFileId: id,
+        	 	 	  source: 'drive',
+        	 	 	  displayName: `Archivo de Drive (ID: ...${id.slice(-6)})`, 
+        	 	 	  status: 'pending',
+        	 	 	  transcription: '',
+        	 	 	  generalSummary: '',
+        	 	 	  businessSummary: '',
+        	 	  };
+      	 	  newFiles.push(newFileItem);
+    	  }
 
-        // 1. Añade los archivos a la cola
-        setFileQueue(prevQueue => [...prevQueue, ...newFiles]);
-        // 2. Cierra el modal y limpia el texto
-      	 setShowDriveModal(false); 
-      	 setDriveLinks(''); 
-      	 // 3. Informa al usuario. ¡YA NO PROCESA AUTOMÁTICAMENTE!
-      	 setStatus(`${newFiles.length} archivo(s) de Drive añadidos. Presiona 'Procesar Todos' para iniciar.`);
+    	  // 1. Añade los archivos a la cola
+    	  setFileQueue(prevQueue => [...prevQueue, ...newFiles]);
+    	  // 2. Cierra el modal y limpia el texto
+    	  setShowDriveModal(false); 
+    	  setDriveLinks(''); 
+    	  // 3. Informa al usuario. ¡YA NO PROCESA AUTOMÁTICAMENTE!
+    	  setStatus(`${newFiles.length} archivo(s) de Drive añadidos. Presiona 'Procesar Todos' para iniciar.`);
   	 };
   	 // --- ================================ ---
 
@@ -758,7 +758,7 @@ ${item.businessSummary}
               	 	 	 	 	  </button>
               	 	 	 	  </div>
               	 	 	 	  
-i             	 	 	 	  <div style={{ margin: '1rem 0', display: 'flex' }}>
+              	 	 	 	  <div style={{ margin: '1rem 0', display: 'flex' }}>
               	 	 	 	 	  <input 
               	 	 	 	 	 	  type="text"
               	 	 	 	 	 	  value={newInstruction}
@@ -770,7 +770,7 @@ i             	 	 	 	  <div style={{ margin: '1rem 0', display: 'flex' }}>
               	 	 	 	 	 	 	 	  saveGlobalInstructions([...globalInstructions, newInstruction]);
               	 	 	 	 	 	 	 	  setNewInstruction('');
               	 	 	 	 	 	 	  }
-s             	 	 	 	 	 }}}
+              	 	 	 	 	 	  }}}
       	       	 	 	 	 	  />
       	       	 	 	 	 	  <button 
       	       	 	 	 	 	 	  onClick={() => {
@@ -788,19 +788,19 @@ s             	 	 	 	 	 }}}
       	       	 	 	 	 	  {globalInstructions.length === 0 && <p>No hay instrucciones guardadas.</p>}
       	       	 	 	 	 	  {globalInstructions.map((inst, index) => (
       	       	 	 	 	 	 	  <div key={index} style={styles.instructionItem}>
-OS           	 	 	 	 	 	 	  <span style={{flex: 1, marginRight: '1rem'}}>{inst}</span> 
+      	       	 	 	 	 	 	 	  <span style={{flex: 1, marginRight: '1rem'}}>{inst}</span> 
       	       	 	 	 	 	 	 	  <button 
       	       	 	 	 	 	 	 	 	  onClick={() => {
       	       	 	 	 	 	 	 	 	 	  const updated = globalInstructions.filter((_, i) => i !== index);
       	       	 	 	 	 	 	 	 	 	  saveGlobalInstructions(updated);
       	       	 	 	 	 	 	 	 	  }}
       	       	 	 	 	 	 	 	 	  style={styles.deleteButton}
-      	       	 	 	 	 	 	  >
+section       	 	 	 	 	  >
       	       	 	 	 	 	 	 	  Eliminar
       	       	 	 	 	 	 	  </button>
       	       	 	 	 	 	  </div>
-  s       	 	 	 	 	  ))}
-      	       	 	 	 	  </div>
+      	       	 	 	 	 	  ))}
+iOS       	 	 	 	  </div>
       	       	 	 	 	  <button onClick={() => setIsModalOpen(false)} style={{...styles.button, marginTop: '1rem', margin: 0}}>Cerrar</button>
       	       	 	 	  </div>
       	       	 	  </div>
@@ -864,7 +864,7 @@ JSON }
 // --- ================================== ---
 // Estas funciones SÍ son necesarias para el flujo "Subir desde PC"
 const runGeneralSummary_LEGACY = async (transcription: string): Promise<string> => {
-D const body = JSON.stringify({
+  	 const body = JSON.stringify({
     	  transcription: transcription 
   	 });
 
