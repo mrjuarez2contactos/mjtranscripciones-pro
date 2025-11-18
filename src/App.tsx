@@ -189,7 +189,7 @@ const App: React.FC = () => {
         }
         
         setIsLoading(true); 
-        setStatus(`Iniciando cola de ${idsToProcess.length} archivos...`);
+        setStatus(`Iniciando procesamiento por lotes de ${idsToProcess.length} archivos...`);
 
         // 2. Iteramos sobre los IDs fijos, esperando cada uno
         for (let i = 0; i < idsToProcess.length; i++) {
@@ -273,12 +273,12 @@ const App: React.FC = () => {
         try {
             const response = await fetch(sheetsApiUrl);
             if (!response.ok) {
-                throw new Error(`Error en la red: ${response.statusText}`);
+                throw new Error(`Red: ${response.statusText}`);
             }
             const data: Anotacion[] | { error: string } = await response.json();
 
             if (data && typeof data === 'object' && 'error' in data) {
-                throw new Error(`Error de Apps Script: ${data.error}`);
+                throw new Error(`Apps Script: ${data.error}`);
             }
 
             if(Array.isArray(data)) {
@@ -313,6 +313,8 @@ const App: React.FC = () => {
                 }
             });
     };
+
+    const filteredAnotaciones = getFilteredAndSortedAnotaciones();
     
     // --- LÓGICA DE DESCARGA (ACTUALIZADA) ---
     const generateDocumentContent = (item: FileQueueItem): string => {
@@ -320,9 +322,8 @@ const App: React.FC = () => {
 =========================================
 REGISTRO DE LLAMADA
 =========================================
-
-Archivo Original: ${item.displayName}
-Fecha de Procesamiento: ${new Date().toLocaleString()}
+Archivo: ${item.displayName}
+Fecha: ${new Date().toLocaleString()}
 
 --- 1. TRANSCRIPCIÓN ---
 ${item.transcription}
@@ -400,7 +401,7 @@ ${item.businessSummary}
         buttonGreen: { backgroundColor: '#36a420' }, 
         buttonSmall: { padding: '8px 12px', fontSize: '14px', marginRight: '0.5rem' }, 
         textarea: { width: '100%', minHeight: '150px', padding: '10px', borderRadius: '6px', border: '1px solid #dddfe2', fontSize: '14px', marginTop: '1rem' },
-        status: { textAlign: 'center', margin: '1.5rem 0', color: 'rgb(24, 119, 242)', fontWeight: 'bold' },
+        status: { textAlign: 'center', margin: '1.5rem 0', color: 'rgb(24, 119, 242)', fontWeight: 'bold' }, // Color ajustado para 'Actualizando'
         modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
         modalContent: { backgroundColor: 'white', padding: '2rem', borderRadius: '8px', width: '90%', maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto' },
         modalInput: { width: 'calc(100% - 100px)', padding: '10px', borderRadius: '6px', border: '1px solid #dddfe2' },
