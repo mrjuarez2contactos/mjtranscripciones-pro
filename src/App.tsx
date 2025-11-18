@@ -142,7 +142,7 @@ const App: React.FC = () => {
             } else if (item.source === 'drive' && item.driveFileId) {
                 // Flujo de Drive: 1 llamada que hace todo
                 setStatus(`Procesando (Drive): ${item.displayName}...`);
-            _   const data = await runTranscriptionFromDrive(item.driveFileId, globalInstructions);
+                const data = await runTranscriptionFromDrive(item.driveFileId, globalInstructions);
                 transcription = data.transcription;
                 fileName = data.fileName;
                 generalSummary = data.generalSummary;
@@ -198,50 +198,50 @@ const App: React.FC = () => {
         }
 
         setIsLoading(false); 
-        setStatus("Procesamiento por lotes finalizado.");
+    t     setStatus("Procesamiento por lotes finalizado.");
     };
     
     // --- ¡NUEVAS FUNCIONES DE GOOGLE DRIVE! ---
 
     const parseDriveLinks = (text: string): string[] => {
         const ids: string[] = [];
-      	 const regex = /\/file\/d\/([a-zA-Z0-9_-]{33})|id=([a-zA-Z0-9_-]{33})/g;
-      	 let match;
-      	 while ((match = regex.exec(text)) !== null) {
-          	 ids.push(match[1] || match[2]);
-      	 }
-      	 return [...new Set(ids)]; // Devuelve solo IDs únicos
+        const regex = /\/file\/d\/([a-zA-Z0-9_-]{33})|id=([a-zA-Z0-9_-]{33})/g;
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+            ids.push(match[1] || match[2]);
+        }
+        return [...new Set(ids)]; // Devuelve solo IDs únicos
     };
 
     // --- ================================== ---
-  	 // ---     ¡FUNCIÓN DE DRIVE CORREGIDA!     ---
-  	 // --- ================================== ---
-  	 const handleProcessDriveLinks = () => { // Ya no es async
-      	 const fileIds = parseDriveLinks(driveLinks);
-      	 if (fileIds.length === 0) {
-        	  setStatus("No se encontraron IDs de Google Drive válidos en los enlaces.");
-        	  return;
-      	 }
+    // ---     ¡FUNCIÓN DE DRIVE CORREGIDA!     ---
+    // --- ================================== ---
+    const handleProcessDriveLinks = () => { // Ya no es async
+        const fileIds = parseDriveLinks(driveLinks);
+        if (fileIds.length === 0) {
+            setStatus("No se encontraron IDs de Google Drive válidos en los enlaces.");
+            return;
+        }
 
-      	 const newFiles: FileQueueItem[] = [];
-      	 for (const id of fileIds) {
-        	  const newFileItem: FileQueueItem = {
-          	 	 id: `drive-${id}-${new Date().getTime()}`,
-          	 	 file: null,
-          	 	 driveFileId: id,
-          	 	 source: 'drive',
-          	 	 displayName: `Archivo de Drive (ID: ...${id.slice(-6)})`, 
-          	 	 status: 'pending',
-          	 	 transcription: '',
-          	 	 generalSummary: '',
-          	 	 businessSummary: '',
-        	 };
-        	 newFiles.push(newFileItem);
-      	 }
+        const newFiles: FileQueueItem[] = [];
+        for (const id of fileIds) {
+            const newFileItem: FileQueueItem = {
+                id: `drive-${id}-${new Date().getTime()}`,
+                file: null,
+                driveFileId: id,
+                source: 'drive',
+                displayName: `Archivo de Drive (ID: ...${id.slice(-6)})`, 
+                status: 'pending',
+                transcription: '',
+                generalSummary: '',
+                businessSummary: '',
+            };
+            newFiles.push(newFileItem);
+        }
 
-      	 // 1. Añade los archivos a la cola
-      	 setFileQueue(prevQueue => [...prevQueue, ...newFiles]);
-      	 // 2. Cierra el modal y limpia el texto
+        // 1. Añade los archivos a la cola
+        setFileQueue(prevQueue => [...prevQueue, ...newFiles]);
+        // 2. Cierra el modal y limpia el texto
       	 setShowDriveModal(false); 
       	 setDriveLinks(''); 
       	 // 3. Informa al usuario. ¡YA NO PROCESA AUTOMÁTICAMENTE!
@@ -650,7 +650,7 @@ ${item.businessSummary}
                                                 </div>
                             	 	 	 	 	 	  <div style={{...styles.queueItemActions, width: '100%', justifyContent: 'flex-end'}}>
                             	 	 	 	 	 	 	  <button 
-                            	 	 	 	 	 	 	 	  onClick={() => processSingleFile(item.id)}
+                          	 	 	 	 	 	 	 	  onClick={() => processSingleFile(item.id)}
                           	 	 	 	 	 	 	 	  disabled={isLoading || item.status === 'processing' || item.status === 'completed'}
                           	 	 	 	 	 	 	 	  style={{...styles.button, ...styles.buttonSmall, margin: 0, ...((isLoading || item.status === 'processing' || item.status === 'completed') ? styles.buttonDisabled : {})}}
                           	 	 	 	 	 	 	  >
@@ -684,7 +684,7 @@ ${item.businessSummary}
                           	 	 	 	 	 	 	 	 	  <strong>Error:</strong> {item.errorMessage.substring(0, 200)}...
                           	 	 	 	 	 	 	 	  </span>
                           	 	 	 	 	 	 	  )}
-            s             	 	 	 	 	 </div>
+                          	 	 	 	 	 	  </div>
                           	 	 	 	 	  )}
                           	 	 	 	  </div>
                           	 	 	  ))}
@@ -695,14 +695,14 @@ ${item.businessSummary}
                         	 	 	 	 	  <p>Descarga todos los resúmenes completados en un solo archivo .zip.</p>
                           	 	 	 	  <button 
                           	 	 	 	 	  onClick={handleDownloadZip}
-            s             	 	 	 	 	 style={{...styles.button, ...styles.buttonGreen, margin: 0}}
+                          	 	 	 	 	  style={{...styles.button, ...styles.buttonGreen, margin: 0}}
                           	 	 	 	 	  disabled={isLoading}
                           	 	 	 	  >
                           	 	 	 	 	  {isLoading ? 'Generando Zip...' : 'Descargar Todo (.zip)'}
                           	 	 	 	  </button>
                           	 	 	  </div>
                           	 	  )}
-            s           	 	  </div>
+                          	 </div>
                         	 	  )}
                     </>
                 )}
@@ -720,14 +720,14 @@ ${item.businessSummary}
               	 	 	 	 	  onChange={(e) => setDriveLinks(e.target.value)}
               	 	 	 	  />
           	 	 	 	 	  <div style={{marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem'}}>
-note           	 	 	 	 	  <button onClick={() => setShowDriveModal(false)} style={{...styles.button, margin: 0, backgroundColor: '#606770'}}>
-              	 	 	 	 	 	  Cancelar
+              	 	 	 	 	 	  <button onClick={() => setShowDriveModal(false)} style={{...styles.button, margin: 0, backgroundColor: '#606770'}}>
+              	 	 	 	 	 	 	  Cancelar
               	 	 	 	 	  </button>
               	 	 	 	 	  <button 
               	 	 	 	 	 	  onClick={handleProcessDriveLinks} 
               	 	 	 	 	 	  style={{...styles.button, ...styles.buttonGreen, margin: 0}}
               	 	 	 	 	 	  disabled={isLoading || driveLinks.length === 0}
-section         	 	 	 	  >
+              	 	 	 	 	  >
               	 	 	 	 	 	  Añadir a la Cola
               	 	 	 	 	  </button>
               	 	 	 	  </div>
@@ -745,11 +745,11 @@ section         	 	 	 	  >
               	 	 	 	  <div style={{ display: 'flex', gap: '1rem', margin: '1rem 0', borderBottom: '1px solid #eee', paddingBottom: '1rem' }}>
               	 	 	 	 	  <input
               	 	 	 	 	 	  type="file"
-s             	 	 	 	 	 	  ref={importFileInputRef}
+              	 	 	 	 	 	  ref={importFileInputRef}
               	 	 	 	 	 	  onChange={handleImportInstructions}
               	 	 	 	 	 	  accept=".txt"
               	 	 	 	 	 	  style={{ display: 'none' }}
-Note           	 	 	 	 	  />
+              	 	 	 	 	  />
               	 	 	 	 	  <button onClick={() => importFileInputRef.current?.click()} style={{...styles.button, flex: 1, backgroundColor: '#42b72a', margin: 0}}>
               	 	 	 	 	 	  Importar desde Archivo
               	 	 	 	 	  </button>
@@ -758,7 +758,7 @@ Note           	 	 	 	 	  />
               	 	 	 	 	  </button>
               	 	 	 	  </div>
               	 	 	 	  
-section           	 	 	 	  <div style={{ margin: '1rem 0', display: 'flex' }}>
+i             	 	 	 	  <div style={{ margin: '1rem 0', display: 'flex' }}>
               	 	 	 	 	  <input 
               	 	 	 	 	 	  type="text"
               	 	 	 	 	 	  value={newInstruction}
@@ -770,42 +770,42 @@ section           	 	 	 	  <div style={{ margin: '1rem 0', display: 'flex' 
               	 	 	 	 	 	 	 	  saveGlobalInstructions([...globalInstructions, newInstruction]);
               	 	 	 	 	 	 	 	  setNewInstruction('');
               	 	 	 	 	 	 	  }
-              	 	 	 	 	 	  }}}
-              	 	 	 	 	  />
-              	 	 	 	 	  <button 
-              	 	 	 	 	 	  onClick={() => {
-              	 	 	 	 	 	 	  if (newInstruction && !globalInstructions.includes(newInstruction)) {
-              	 	 	 	 	 	 	 	  saveGlobalInstructions([...globalInstructions, newInstruction]);
-  	 	 	 	 	 	 	 	 	 	 	  setNewInstruction('');
-              	 	 	 	 	 	 	  }
-              	 	 	 	 	 	  }}
-              	 	 	 	 	 	  style={{...styles.button, ...styles.modalButton, margin: 0}}
-              	 	 	 	 	  >
-              	 	 	 	 	 	  Añadir
-section           	 	 	 	  </button>
-              	 	 	 	  </div>
-              	 	 	 	  <div>
-              	 	 	 	 	  {globalInstructions.length === 0 && <p>No hay instrucciones guardadas.</p>}
-              	 	 	 	 	  {globalInstructions.map((inst, index) => (
-              	 	 	 	 	 	  <div key={index} style={styles.instructionItem}>
-              	 	 	 	 	 	 	  <span style={{flex: 1, marginRight: '1rem'}}>{inst}</span> 
+s             	 	 	 	 	 }}}
+      	       	 	 	 	 	  />
+      	       	 	 	 	 	  <button 
+      	       	 	 	 	 	 	  onClick={() => {
+      	       	 	 	 	 	 	 	  if (newInstruction && !globalInstructions.includes(newInstruction)) {
+      	       	 	 	 	 	 	 	 	  saveGlobalInstructions([...globalInstructions, newInstruction]);
+      	       	 	 	 	 	 	 	 	  setNewInstruction('');
+      	       	 	 	 	 	 	 	  }
+      	       	 	 	 	 	 	  }}
+      	       	 	 	 	 	 	  style={{...styles.button, ...styles.modalButton, margin: 0}}
+      	       	 	 	 	 	  >
+      	       	 	 	 	 	 	  Añadir
+      	       	 	 	 	 	  </button>
+      	       	 	 	 	  </div>
+      	       	 	 	 	  <div>
+      	       	 	 	 	 	  {globalInstructions.length === 0 && <p>No hay instrucciones guardadas.</p>}
+      	       	 	 	 	 	  {globalInstructions.map((inst, index) => (
+      	       	 	 	 	 	 	  <div key={index} style={styles.instructionItem}>
+OS           	 	 	 	 	 	 	  <span style={{flex: 1, marginRight: '1rem'}}>{inst}</span> 
       	       	 	 	 	 	 	 	  <button 
-              	 	 	 	 	 	 	 	  onClick={() => {
-              	 	 	 	 	 	 	 	 	  const updated = globalInstructions.filter((_, i) => i !== index);
-              	 	 	 	 	 	 	 	 	  saveGlobalInstructions(updated);
-              	 	 	 	 	 	 	 	  }}
-              	 	 	 	 	 	 	 	  style={styles.deleteButton}
-OS             	 	 	 	 	  >
-              	 	 	   	 	 	 	  Eliminar
-              	 	 	 	 	 	  </button>
-              	 	 	 	 	 	  </div>
-              	 	 	 	 	  ))}
-              	 	 	 	  </div>
-            	 	 	 	 	  <button onClick={() => setIsModalOpen(false)} style={{...styles.button, marginTop: '1rem', margin: 0}}>Cerrar</button>
-              	 	 	  </div>
-              	 	  </div>
-            	 	  )}
-          	 </div>
+      	       	 	 	 	 	 	 	 	  onClick={() => {
+      	       	 	 	 	 	 	 	 	 	  const updated = globalInstructions.filter((_, i) => i !== index);
+      	       	 	 	 	 	 	 	 	 	  saveGlobalInstructions(updated);
+      	       	 	 	 	 	 	 	 	  }}
+      	       	 	 	 	 	 	 	 	  style={styles.deleteButton}
+      	       	 	 	 	 	 	  >
+      	       	 	 	 	 	 	 	  Eliminar
+      	       	 	 	 	 	 	  </button>
+      	       	 	 	 	 	  </div>
+  s       	 	 	 	 	  ))}
+      	       	 	 	 	  </div>
+      	       	 	 	 	  <button onClick={() => setIsModalOpen(false)} style={{...styles.button, marginTop: '1rem', margin: 0}}>Cerrar</button>
+      	       	 	 	  </div>
+      	       	 	  </div>
+      	       	  )}
+      	   </div>
     	  </div>
   	 );
 };
@@ -834,7 +834,7 @@ const runTranscription = async (file: File): Promise<{transcription: string, fil
 };
 
 // Procesa un archivo de Drive
-const runTranscriptionFromDrive = async (driveFileId: string, instructions: string[]): Promise<{transcription: string, fileName: string, generalSummary: string, businessSummary: string}> => {
+const runTranscriptionFromDrive = async (driveFileId: string, instructions: string[]): Promise<{transcription: string, fileName:string, generalSummary: string, businessSummary: string}> => {
   	 const body = JSON.stringify({
     	  drive_file_id: driveFileId,
     	  instructions: instructions // Pasamos las instrucciones permanentes
@@ -855,7 +855,7 @@ JSON }
   	 return { 
     	  transcription: data.transcription ?? "", 
     	  fileName: data.fileName ?? `DriveFile_${driveFileId.slice(-4)}`,
-section     generalSummary: data.generalSummary ?? "",
+    	  generalSummary: data.generalSummary ?? "",
     	  businessSummary: data.businessSummary ?? ""
   	 };
 };
@@ -864,7 +864,7 @@ section     generalSummary: data.generalSummary ?? "",
 // --- ================================== ---
 // Estas funciones SÍ son necesarias para el flujo "Subir desde PC"
 const runGeneralSummary_LEGACY = async (transcription: string): Promise<string> => {
-section const body = JSON.stringify({
+D const body = JSON.stringify({
     	  transcription: transcription 
   	 });
 
@@ -872,13 +872,13 @@ section const body = JSON.stringify({
   	 const response = await fetch('https://mjtranscripciones.onrender.com/summarize-general', { 
     	  method: 'POST',
     	  headers: { 'Content-Type': 'application/json' },
-note   	  body: body,
+  	 	  body: body,
   	 });
 
   	 if (!response.ok) {
   	 	  const errorData = await response.json();
     	  throw new Error(errorData.detail || 'Error del servidor en resumen general');
-  	 }
+section }
 
   	 const data = await response.json();
   	 return data.summary ?? "";
@@ -899,7 +899,7 @@ const runBusinessSummary_LEGACY = async (transcription: string, instructions: st
 
   	 if (!response.ok) {
     	  const errorData = await response.json();
-Mismo   	  throw new Error(errorData.detail || 'Error del servidor en resumen de negocio');
+    	  throw new Error(errorData.detail || 'Error del servidor en resumen de negocio');
   	 }
 
   	 const data = await response.json();
